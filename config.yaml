@@ -1,0 +1,54 @@
+# BinSight settings. Everything tunable lives here.
+
+# --- model ---------------------------------------------------------------
+# Hugging Face model id. Override per run with `--model <id>`, or `--model fallback`.
+model: google/siglip2-so400m-patch16-256
+fallback_model: openai/clip-vit-large-patch14
+device: auto            # auto = MPS if available, else CPU. Or: mps | cpu
+
+# --- scoring -------------------------------------------------------------
+prompt_template: "This is a photo of {}."
+threshold: 0.6          # below this top-class confidence -> UNSURE
+threshold_step: 0.05    # change per +/- keypress in the live window
+reject_class: other     # top class that always routes to UNSURE
+
+# Order matters: it is the order of the score output. One compartment per class
+# (class name upper-cased), plus UNSURE.
+prompts:
+  plastic: [plastic bottle, plastic bag, chip packet wrapper, plastic container, plastic cup]
+  paper: [newspaper, cardboard box, sheet of paper, paper bag]
+  metal: [aluminium soda can, tin can, aluminium foil, metal bottle cap]
+  organic: [banana peel, apple core, food scraps, vegetable peels]
+  other:
+    - glass bottle
+    - battery
+    - phone
+    - a human hand
+    - an empty surface
+    - a person's face
+
+# --- live demo -----------------------------------------------------------
+camera: 0               # OpenCV camera index (Continuity Camera can steal 0; try 1)
+roi_fraction: 0.6       # tray square side as a fraction of the frame height
+display_width: 960      # window video width in px (16:9)
+
+# Auto-trigger: ROI is compared with a background grabbed while the tray is empty.
+# Fractions are of ROI pixels that changed by more than the level (0-255 grey).
+trigger:
+  diff_level: 25          # pixel change that counts as "different from background"
+  motion_level: 20        # pixel change between frames that counts as "moving"
+  occupied_fraction: 0.04 # above this the tray holds something
+  clear_fraction: 0.02    # below this the tray is empty again
+  still_fraction: 0.02    # below this between frames the item is still
+  still_frames: 10        # consecutive still frames before classifying
+  clear_frames: 10        # consecutive empty frames before re-arming
+  warmup_frames: 20       # frames skipped (auto-exposure settling) before the background grab
+  background_frames: 10   # frames averaged into the background
+
+# Compartment colours (hex RGB).
+colours:
+  PLASTIC: "#3b82f6"
+  PAPER: "#f5c542"
+  METAL: "#9aa5b1"
+  ORGANIC: "#34c759"
+  UNSURE: "#ef4444"
