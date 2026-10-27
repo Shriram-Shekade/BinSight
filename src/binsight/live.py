@@ -36,6 +36,7 @@ class Trigger:
     def __init__(self, cfg: TriggerConfig):
         self.cfg = cfg
         self.state = CAPTURING
+        self.changed = 0.0  # fraction of the ROI that differs from the background, for display
         self.begin_background(cfg.warmup_frames)
 
     def begin_background(self, skip: int = 0) -> None:
@@ -44,13 +45,17 @@ class Trigger:
         self._acc: list[np.ndarray] = []
         self._bg: np.ndarray | None = None
         self._prev: np.ndarray | None = None
+        self._ref: np.ndarray | None = None
         self._still = 0
         self._clear = 0
+        self._gone = 0
 
     def hold(self) -> None:
         """Mark the current item as decided (after a manual SPACE too)."""
         self.state = HELD
+        self._ref = self._prev  # what the tray looked like with the item on it
         self._clear = 0
+        self._gone = 0
 
     @staticmethod
     def _prep(roi: np.ndarray) -> np.ndarray:
@@ -76,12 +81,14 @@ class Trigger:
             return False
 
         assert self._bg is not None
-        changed = float((np.abs(cur - self._bg) > cfg.diff_level).mean())
+        changed = self.changed = float((np.abs(cur - self._bg) > cfg.diff_level).mean())
         fire = False
 
         if self.state == ARMED:
             if changed > cfg.occupied_fraction:
                 self.state, self._still = SETTLING, 0
+            else:  # empty tray: follow slow lighting drift
+                self._bg = (1 - cfg.adapt_rate) * self._bg + cfg.adapt_rate * cur
         elif self.state == SETTLING:
             if changed < cfg.clear_fraction:
                 self.state = ARMED
@@ -95,6 +102,17 @@ class Trigger:
             self._clear = self._clear + 1 if changed < cfg.clear_fraction else 0
             if self._clear >= cfg.clear_frames:
                 self.state = ARMED
+            elif self._ref is not None:
+                # Lighting shifted so the empty tray no longer matches the background: if the
+                # scene differs from how it looked with the item and has stopped moving, the
+                # item is gone, so take a fresh background instead of staying stuck.
+                moved = float((np.abs(cur - self._prev) > cfg.motion_level).mean())
+                gone = (
+                    float((np.abs(cur - self._ref) > cfg.diff_level).mean()) > cfg.occupied_fraction
+                )
+                self._gone = self._gone + 1 if gone and moved < cfg.still_fraction else 0
+                if self._gone >= cfg.rearm_still_frames:
+                    self.begin_background(cfg.rearm_skip_frames)
 
         self._prev = cur
         return fire
@@ -199,7 +217,7 @@ class LiveApp:
             cv2.line(img, (cx, cy), (cx, cy + dy * arm), color, 3, cv2.LINE_AA)
         put(img, "TRAY", (x0 + 6, y0 - 8), 0.5 * self.s, color)
         state = self.trigger.state
-        hint = STATE_TEXT[state]
+        hint = f"{STATE_TEXT[state]}  [{self.trigger.changed:.0%} changed]"
         hint_color = (0, 200, 255) if state in (CAPTURING, SETTLING) else (255, 255, 255)
         size = cv2.getTextSize(hint, FONT, 0.6 * self.s, 1)[0]
         put(img, hint, ((x0 + x1 - size[0]) // 2, y1 + int(24 * self.s)), 0.6 * self.s, hint_color)

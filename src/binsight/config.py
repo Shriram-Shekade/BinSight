@@ -22,6 +22,9 @@ class TriggerConfig:
     clear_frames: int
     warmup_frames: int
     background_frames: int
+    adapt_rate: float
+    rearm_still_frames: int
+    rearm_skip_frames: int
 
 
 @dataclass

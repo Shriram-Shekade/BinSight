@@ -44,6 +44,9 @@ trigger:
   clear_frames: 10        # consecutive empty frames before re-arming
   warmup_frames: 20       # frames skipped (auto-exposure settling) before the background grab
   background_frames: 10   # frames averaged into the background
+  adapt_rate: 0.02        # how fast the empty-tray background follows lighting drift
+  rearm_still_frames: 45  # item gone but tray never matched background: still this long -> new background
+  rearm_skip_frames: 10   # frames skipped before that new background grab
 
 # Compartment colours (hex RGB).
 colours:
