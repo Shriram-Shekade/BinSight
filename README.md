@@ -1,40 +1,96 @@
-# BinSight
+# BinSight v2
 
-Demo of a campus smart bin. An item goes on a tray, a camera classifies it with a pretrained
-zero-shot model (no dataset, no training), and the tray drops it into PLASTIC, PAPER, METAL or
-ORGANIC. Anything uncertain or out of scope goes to UNSURE for manual sorting: a wrong auto-sort
-is worse than an UNSURE.
+A campus smart bin. An item goes on a tray, a camera classifies it, and the tray drops it into
+PLASTIC, PAPER, METAL or ORGANIC. Anything uncertain or out of scope goes to UNSURE for manual
+sorting, because one wrong item contaminates a whole compartment: a wrong auto-sort is much worse
+than an UNSURE.
 
-Default model is `google/siglip2-so400m-patch16-256`; `openai/clip-vit-large-patch14` is the
-fallback. Runs on Apple-silicon MPS with CPU fallback.
+v1 asked a pretrained model (SigLIP2) to match photos against text prompts. v2 trains its own
+classifier on ~20k public waste photos on top of that model, calibrates it, and picks the UNSURE
+threshold from data to keep wrong sorts under 1%. See **[reports/REPORT.md](reports/REPORT.md)**
+for the measured accuracy against v1.
+
+## Results
+
+On 3,312 held-out test photos (never used for training, tuning or picking the threshold):
+
+| | v1 zero-shot | v2 trained + guard |
+| --- | --- | --- |
+| 5-class accuracy | 82.0% | **99.1%** |
+| Items put in the wrong compartment | 5.6% | **0.5%** |
+| Sortable items sorted into the right compartment | 80.2% | **98.1%** |
+| Latency per item (M5, fp16) | ~90 ms (fp32) | ~34 ms |
+
+![Sorting more vs sorting wrong](reports/tradeoff.png)
+
+These are web photos, so expect lower numbers from a real webcam; the full write-up and its
+limitations are in [reports/REPORT.md](reports/REPORT.md).
+
+Why the guard matters: on a photo of an open hand, the trained head alone says *organic, 0.73*,
+because the training data has no hands, and that is above the threshold. The zero-shot guard
+scores it *other, 0.99* and it goes to UNSURE instead.
+
+## How it works
+
+```
+webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 1152-d embedding
+                                                                   │
+                         ┌─────────────────────────────────────────┤
+                         ▼                                         ▼
+              trained head (this repo)                 zero-shot prompts (v1)
+              plastic/paper/metal/organic/other        "is it a hand, a face, ...?"
+                         │                                         │
+                         └──────────► route ◄──────────────────────┘
+               UNSURE if top class is "other", confidence < threshold,
+               or the zero-shot guard says "other"; otherwise that compartment
+```
+
+- **Backbone**: `google/siglip2-so400m-patch16-256`, frozen. Only the head's weights are
+  trained. With about 20k images, a frozen strong encoder generalises better than fine-tuning
+  400M parameters, and it keeps the zero-shot prompts working as a guard for things the datasets
+  have no pictures of (hands, faces, an empty tray).
+- **Head**: linear or one-hidden-layer MLP, picked by a small grid on validation macro-F1;
+  class-balanced loss; label smoothing; temperature-calibrated softmax.
+- **Data**: three openly licensed Hugging Face datasets (MIT / Apache-2.0), labels mapped to the
+  five classes in `config.yaml`, near-duplicates merged before splitting so nothing leaks from
+  train to test, 70/15/15 stratified split, two augmented views per training image.
 
 ## Setup
 
-Needs [uv](https://docs.astral.sh/uv/).
+Needs [uv](https://docs.astral.sh/uv/) and about 10 GB of disk for the model and datasets.
 
 ```bash
 uv sync
 ```
 
-The first run downloads the model (about 4.5 GB for SigLIP2) into the Hugging Face cache.
+The trained head is committed in `models/`, so `live` and `classify` work straight away. To
+rebuild everything from the public data:
+
+```bash
+uv run binsight prepare    # download datasets, embed, de-duplicate, split (~35 min on an M5)
+uv run binsight train      # train the head, calibrate, pick the threshold (~ a few minutes)
+uv run binsight evaluate   # held-out test results -> reports/REPORT.md
+```
+
+`prepare` caches its work in `data/` and can be re-run.
 
 ### Camera access
 
 macOS only lets an app use the camera if you allow it. Allow the terminal app you run
-`binsight` from (Terminal, iTerm, ...) in
-**System Settings → Privacy & Security → Camera**, then restart that app. Without it
-`binsight live` stops with "Cannot open camera". If a phone nearby takes over camera 0
-(Continuity Camera), use `--camera 1`.
+`binsight` from in **System Settings → Privacy & Security → Camera**, then restart that app.
+If a phone nearby takes over camera 0 (Continuity Camera), use `--camera 1`.
 
 ## Commands
 
 ```bash
-uv run binsight live                 # webcam demo
-uv run binsight classify photo.jpg   # scores for one image file
+uv run binsight live                  # webcam demo
+uv run binsight classify a.jpg b.jpg  # scores and decision for image files
 ```
 
-Both accept `--model <hf id>` (or `--model fallback` for CLIP), `--config <path>` and
-`--threshold <0-1>`. `live` also takes `--camera <index>`.
+Options for both: `--threshold <0-1>` (default: the value `train` chose), `--zero-shot` (ignore
+the trained head, i.e. v1 behaviour), `--model <hf id>` (or `--model fallback` for CLIP; a head
+trained on a different backbone is ignored), `--config <path>`. `live` also takes
+`--camera <index>`.
 
 ### `binsight live`
 
@@ -51,19 +107,12 @@ readable. Nothing is written to disk. Each decision is also printed in the termi
 | `+` / `-` | raise / lower the UNSURE threshold by 0.05 |
 | `Q` / `Esc` | quit |
 
-Tips: keep the tray empty for the first second after start, and keep your hand out of the square
-after placing the item (a hand in view is scored as "other" and goes to UNSURE).
+The hint under the tray shows how much of it differs from the background; near 0% means empty.
 
 ## Configuration
 
-Everything is in [`config.yaml`](config.yaml): model ids, prompts per class, prompt template,
-threshold, ROI size, trigger sensitivity and compartment colours.
-
-How scoring works: every class has several text prompts; their embeddings are averaged into one
-vector per class (encoded once at startup). For an item, only the image is encoded; scores are the
-scaled cosine similarity to each class vector, softmaxed over the five classes so they sum to 1.
-The item goes to UNSURE if the top class is `other` or its confidence is below the threshold
-(default 0.6).
+Everything is in [`config.yaml`](config.yaml): backbone, head path, prompts, threshold, guard,
+dataset label mapping, split and training settings, ROI size, trigger sensitivity and colours.
 
 ## Development
 

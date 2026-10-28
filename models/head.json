@@ -1,0 +1,85 @@
+{
+  "backbone": "google/siglip2-so400m-patch16-256",
+  "classes": [
+    "plastic",
+    "paper",
+    "metal",
+    "organic",
+    "other"
+  ],
+  "dim": 1152,
+  "hidden": 512,
+  "temperature": 0.40738028287887573,
+  "threshold": 0.54,
+  "guard": 0.5,
+  "max_wrong_sort": 0.01,
+  "val_operating_point": {
+    "threshold": 0.54,
+    "coverage": 0.4429347826086957,
+    "wrong_sort_rate": 0.009963768115942028,
+    "unsure_rate": 0.5570652173913043,
+    "sortable_recall": 0.9695740365111561,
+    "precision_of_sorts": 0.9775051124744376
+  },
+  "val_macro_f1": 0.9800370561525273,
+  "grid": [
+    {
+      "hidden": 0,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "val_macro_f1": 0.9685939341383458,
+      "best_epoch": 26
+    },
+    {
+      "hidden": 0,
+      "lr": 0.001,
+      "weight_decay": 0.01,
+      "val_macro_f1": 0.9685939341383458,
+      "best_epoch": 25
+    },
+    {
+      "hidden": 0,
+      "lr": 0.0003,
+      "weight_decay": 0.0001,
+      "val_macro_f1": 0.9498180022791771,
+      "best_epoch": 31
+    },
+    {
+      "hidden": 0,
+      "lr": 0.0003,
+      "weight_decay": 0.01,
+      "val_macro_f1": 0.9498180022791771,
+      "best_epoch": 31
+    },
+    {
+      "hidden": 512,
+      "lr": 0.001,
+      "weight_decay": 0.0001,
+      "val_macro_f1": 0.9800370561525273,
+      "best_epoch": 29
+    },
+    {
+      "hidden": 512,
+      "lr": 0.001,
+      "weight_decay": 0.01,
+      "val_macro_f1": 0.9800370561525273,
+      "best_epoch": 29
+    },
+    {
+      "hidden": 512,
+      "lr": 0.0003,
+      "weight_decay": 0.0001,
+      "val_macro_f1": 0.9772335863753568,
+      "best_epoch": 26
+    },
+    {
+      "hidden": 512,
+      "lr": 0.0003,
+      "weight_decay": 0.01,
+      "val_macro_f1": 0.9772335863753568,
+      "best_epoch": 26
+    }
+  ],
+  "train_embeddings": 46353,
+  "trained_at": "2026-10-28T17:22:30"
+}
