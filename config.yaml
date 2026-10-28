@@ -1,19 +1,29 @@
 # BinSight settings. Everything tunable lives here.
 
 # --- model ---------------------------------------------------------------
-# Hugging Face model id. Override per run with `--model <id>`, or `--model fallback`.
+# Frozen open-source backbone. Override per run with `--model <id>`, or `--model fallback`.
 model: google/siglip2-so400m-patch16-256
 fallback_model: openai/clip-vit-large-patch14
 device: auto            # auto = MPS if available, else CPU. Or: mps | cpu
+dtype: auto             # auto = float16 on MPS, float32 on CPU
+
+# Trained classifier head (made by `binsight train`). If the file is missing, or was trained
+# on another backbone, BinSight falls back to zero-shot prompts.
+head: models/head.safetensors
 
 # --- scoring -------------------------------------------------------------
 prompt_template: "This is a photo of {}."
-threshold: 0.6          # below this top-class confidence -> UNSURE
+# auto = the threshold `binsight train` picked on validation data to meet max_wrong_sort
+# (0.6 in zero-shot mode). A number overrides it.
+threshold: auto
 threshold_step: 0.05    # change per +/- keypress in the live window
 reject_class: other     # top class that always routes to UNSURE
+# Zero-shot guard for things the training data has no examples of (hands, faces, empty
+# tray, phones): UNSURE if the zero-shot "other" score is at least this. null disables it.
+guard: 0.5
 
-# Order matters: it is the order of the score output. One compartment per class
-# (class name upper-cased), plus UNSURE.
+# Order matters: it is the class order of the head and of every score output. One
+# compartment per class (class name upper-cased), plus UNSURE. Used by zero-shot and the guard.
 prompts:
   plastic: [plastic bottle, plastic bag, chip packet wrapper, plastic container, plastic cup]
   paper: [newspaper, cardboard box, sheet of paper, paper bag]
@@ -26,6 +36,62 @@ prompts:
     - a human hand
     - an empty surface
     - a person's face
+
+# --- training data -------------------------------------------------------
+data:
+  dir: data               # embeddings and splits (git-ignored)
+  seed: 0
+  val_fraction: 0.15
+  test_fraction: 0.15
+  dedupe_cosine: 0.985    # images this similar count as one (copies across datasets)
+  augment_views: 2        # extra augmented embeddings per training image
+  batch_size: 64
+  workers: 6
+  # Hugging Face dataset -> {its label: our class}. null drops the label: it is too mixed
+  # to say which compartment it belongs in, and a wrong label teaches wrong sorts.
+  sources:
+    omasteam/waste-garbage-management-dataset:   # MIT, ~19.8k images
+      battery: other
+      biological: organic
+      cardboard: paper
+      clothes: other
+      glass: other
+      metal: metal
+      paper: paper
+      plastic: plastic
+      shoes: other
+      trash: null           # mixed non-recyclables; overlaps wrappers we call plastic
+    garythung/trashnet:                          # MIT, ~5k images
+      cardboard: paper
+      glass: other
+      metal: metal
+      paper: paper
+      plastic: plastic
+      trash: null
+    viola77data/recycling-dataset:               # Apache-2.0, ~3.1k images
+      aluminium: metal
+      batteries: other
+      cardboard: paper
+      disposable plates: null   # paper, plastic or foam
+      glass: other
+      hard plastic: plastic
+      paper: paper
+      paper towel: null         # used tissue: not recyclable paper, not food
+      polystyrene: null         # foam: rarely accepted with plastics
+      soft plastics: plastic    # bags and wrappers
+      takeaway cups: null       # plastic-lined paper
+
+# --- training ------------------------------------------------------------
+train:
+  epochs: 40
+  batch_size: 256
+  label_smoothing: 0.05
+  dropout: 0.2
+  # Small grid; the best on validation macro-F1 is kept. hidden 0 = linear head.
+  hidden: [0, 512]
+  lr: [0.001, 0.0003]
+  weight_decay: [0.0001, 0.01]
+  max_wrong_sort: 0.01    # pick the lowest threshold whose wrong-sort rate on val is <= this
 
 # --- live demo -----------------------------------------------------------
 camera: 0               # OpenCV camera index (Continuity Camera can steal 0; try 1)

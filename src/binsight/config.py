@@ -7,7 +7,7 @@ from pathlib import Path
 
 import yaml
 
-PROJECT_CONFIG = Path(__file__).resolve().parents[2] / "config.yaml"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 UNSURE = "UNSURE"
 
 
@@ -28,15 +28,45 @@ class TriggerConfig:
 
 
 @dataclass
+class DataConfig:
+    dir: Path
+    seed: int
+    val_fraction: float
+    test_fraction: float
+    dedupe_cosine: float
+    augment_views: int
+    batch_size: int
+    workers: int
+    sources: dict[str, dict[str, str | None]]
+
+
+@dataclass
+class TrainConfig:
+    epochs: int
+    batch_size: int
+    label_smoothing: float
+    dropout: float
+    hidden: list[int]
+    lr: list[float]
+    weight_decay: list[float]
+    max_wrong_sort: float
+
+
+@dataclass
 class Config:
     model: str
     fallback_model: str
     device: str
+    dtype: str
+    head: Path
     prompt_template: str
-    threshold: float
+    threshold: float | str
     threshold_step: float
     reject_class: str
+    guard: float | None
     prompts: dict[str, list[str]]
+    data: DataConfig
+    train: TrainConfig
     camera: int
     roi_fraction: float
     display_width: int
@@ -54,14 +84,25 @@ class Config:
 
 
 def load_config(path: Path | None = None) -> Config:
-    """Read `path`, else ./config.yaml, else the config.yaml next to the package."""
+    """Read `path`, else ./config.yaml, else the project's config.yaml.
+
+    Relative paths inside it (head, data dir) resolve against the config file's folder.
+    """
     if path is None:
         path = Path("config.yaml")
         if not path.exists():
-            path = PROJECT_CONFIG
+            path = PROJECT_ROOT / "config.yaml"
+    base = path.resolve().parent
     raw = yaml.safe_load(path.read_text())
-    trigger = TriggerConfig(**raw.pop("trigger"))
-    return Config(trigger=trigger, **raw)
+    data = raw.pop("data")
+    data["dir"] = base / data["dir"]
+    return Config(
+        trigger=TriggerConfig(**raw.pop("trigger")),
+        data=DataConfig(**data),
+        train=TrainConfig(**raw.pop("train")),
+        head=base / raw.pop("head"),
+        **raw,
+    )
 
 
 def hex_to_bgr(value: str) -> tuple[int, int, int]:
