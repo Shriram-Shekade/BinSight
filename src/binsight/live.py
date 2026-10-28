@@ -286,7 +286,7 @@ class LiveApp:
         panel = np.full((height, self.panel_w, 3), (32, 32, 32), np.uint8)
         x = int(16 * s)
         put(panel, "BinSight", (x, int(40 * s)), 0.95 * s, (255, 255, 255), 2)
-        short = self.clf.model_id.split("/")[-1]
+        short = f"{self.clf.model_id.split('/')[-1]} ({self.clf.mode})"
         put(panel, short, (x, int(64 * s)), 0.45 * s, (170, 170, 170))
         put(
             panel,
@@ -369,4 +369,4 @@ class LiveApp:
 
 
 def run_live(cfg: Config, classifier: Classifier, threshold: float | None = None) -> None:
-    LiveApp(cfg, classifier, cfg.threshold if threshold is None else threshold).run()
+    LiveApp(cfg, classifier, classifier.threshold if threshold is None else threshold).run()
