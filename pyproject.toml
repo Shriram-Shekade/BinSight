@@ -3,6 +3,8 @@ name = "binsight"
 version = "0.2.0"
 description = "Smart waste-sorting bin demo: zero-shot camera classification with SigLIP2 / CLIP"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11,<3.12"
 dependencies = [
     "numpy",

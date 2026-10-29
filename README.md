@@ -119,3 +119,19 @@ dataset label mapping, split and training settings, ROI size, trigger sensitivit
 ```bash
 uv run ruff format . && uv run ruff check .
 ```
+
+## License and credits
+
+BinSight's code and trained head (`models/`) are released under the [MIT License](LICENSE).
+
+It builds on others' work, each under its own license:
+
+| What | Used for | License |
+| --- | --- | --- |
+| [google/siglip2-so400m-patch16-256](https://huggingface.co/google/siglip2-so400m-patch16-256) | frozen image/text encoder, downloaded at first run (not redistributed here) | Apache-2.0 |
+| [openai/clip-vit-large-patch14](https://huggingface.co/openai/clip-vit-large-patch14) | optional fallback encoder | MIT |
+| [omasteam/waste-garbage-management-dataset](https://huggingface.co/datasets/omasteam/waste-garbage-management-dataset) | training and test images | MIT |
+| [garythung/trashnet](https://huggingface.co/datasets/garythung/trashnet) | training and test images | MIT |
+| [viola77data/recycling-dataset](https://huggingface.co/datasets/viola77data/recycling-dataset) | training and test images | Apache-2.0 |
+
+The datasets are downloaded by `binsight prepare` and are not included in this repository.
