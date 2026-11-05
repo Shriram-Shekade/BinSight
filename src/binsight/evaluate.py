@@ -30,7 +30,7 @@ BLUES = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d3
 
 
 def _system(name, probs, zero_shot, y, classes, cfg, threshold, guard, logits_raw=None,
-            agree=False):  # fmt: skip
+            agree=None):  # fmt: skip
     truth = true_compartments(y, classes, cfg.reject_class)
     chosen = decisions(probs, zero_shot, classes, threshold, cfg.reject_class, guard, agree)
     pred = probs.argmax(1)
@@ -275,13 +275,15 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
             "What this found: plastic in the two larger datasets is mostly bottles, so a head "
             "trained without the recycling-dataset mistook soft plastics (bags, wrappers) and "
             "hard plastic containers for paper or 'other', confidently. Zero-shot SigLIP2 knows "
-            "what a wrapper is. Requiring the trained head and zero-shot to agree before "
-            "auto-sorting cut wrong sorts on that unseen dataset from 12.0% to about 2%. It is "
-            "now part of the deployed system. The cost shows on the main test set: sortable "
-            f"items sorted right drop from {_pct(guarded['sortable_recall'])} to "
-            f"{_pct(deployed['sortable_recall'])}, mostly paper, where zero-shot is weakest; "
-            "those items go to UNSURE, not to a wrong bin. Turn it off with "
-            "`require_agreement: false` (then re-run `binsight train`).",
+            "what a wrapper is. So the deployed system only auto-sorts when the trained head and "
+            f"zero-shot pick the same class, unless the head is at least {meta['agree']:.0%} "
+            "sure. Always requiring agreement cut wrong sorts on the unseen dataset from 12.0% "
+            "to 2.2% but sent many paper items to UNSURE (zero-shot is weak on paper); the "
+            "confidence exception, chosen on validation and this unseen-dataset test, keeps most "
+            "of the safety (about 2.7%) while sorting far more. On the main test set: sortable "
+            f"items sorted right {_pct(guarded['sortable_recall'])} without the rule, "
+            f"{_pct(deployed['sortable_recall'])} with it. Set `agreement` in `config.yaml` "
+            "(1.0 = always require, null = off), then re-run `binsight train`.",
         ]
     lines += [
         "",
@@ -338,7 +340,8 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         f"'other' with probability >= {cfg.guard}, the item goes to UNSURE. This covers things "
         "the datasets have no pictures of (hands, faces, an empty tray, phones).",
         "5. Agreement: the item is auto-sorted only if the trained head and the zero-shot "
-        "prompts pick the same class (see the unseen-source test).",
+        f"prompts pick the same class, or the head is at least {meta.get('agree') or 0:.0%} sure "
+        "(see the unseen-source test).",
         "6. The UNSURE threshold is the lowest one meeting the wrong-sort target on validation.",
         "",
         "Validation grid:",
@@ -410,7 +413,7 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
         _system("trained + guard", t_probs, t_zs, t_y, classes, cfg, guard_threshold,
                 meta["guard"]),
         _system("trained + guard + agreement (deployed)", t_probs, t_zs, t_y, classes, cfg,
-                meta["threshold"], meta["guard"], agree=meta.get("agree", False)),
+                meta["threshold"], meta["guard"], agree=meta.get("agree")),
     ]  # fmt: skip
     for s in systems:
         log(
@@ -436,7 +439,7 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
         ("trained", sweep(t_probs, None, t_y, classes, rc, None), systems[2]),
         ("trained + guard", sweep(t_probs, t_zs, t_y, classes, rc, meta["guard"]), systems[3]),
         ("+ agreement", sweep(t_probs, t_zs, t_y, classes, rc, meta["guard"],
-                              agree=meta.get("agree", False)), systems[4]),
+                              agree=meta.get("agree")), systems[4]),
     ]  # fmt: skip
     _plot_tradeoff(curves, systems[0], meta["max_wrong_sort"], out / "tradeoff.png")
     (out / "metrics.json").write_text(

@@ -4,7 +4,7 @@
       "name": "v1 zero-shot",
       "threshold": 0.6,
       "guard": null,
-      "agree": false,
+      "agree": null,
       "accuracy": 0.8197463768115942,
       "accuracy_ci": [
         0.8061594202898551,
@@ -99,7 +99,7 @@
       "name": "zero-shot, tuned threshold",
       "threshold": 0.88,
       "guard": null,
-      "agree": false,
+      "agree": null,
       "accuracy": 0.8197463768115942,
       "accuracy_ci": [
         0.8061594202898551,
@@ -194,7 +194,7 @@
       "name": "trained head",
       "threshold": 0.63,
       "guard": null,
-      "agree": false,
+      "agree": null,
       "accuracy": 0.991243961352657,
       "accuracy_ci": [
         0.9879227053140096,
@@ -290,7 +290,7 @@
       "name": "trained + guard",
       "threshold": 0.54,
       "guard": 0.5,
-      "agree": false,
+      "agree": null,
       "accuracy": 0.991243961352657,
       "accuracy_ci": [
         0.9879227053140096,
@@ -385,7 +385,7 @@
       "name": "trained + guard + agreement (deployed)",
       "threshold": 0.3,
       "guard": 0.5,
-      "agree": true,
+      "agree": 0.99,
       "accuracy": 0.991243961352657,
       "accuracy_ci": [
         0.9879227053140096,
@@ -393,20 +393,20 @@
       ],
       "macro_f1": 0.9868530193154615,
       "ece": 0.005743730336355701,
-      "coverage": 0.3988526570048309,
+      "coverage": 0.43629227053140096,
       "wrong_sort_rate": 0.0036231884057971015,
-      "unsure_rate": 0.601147342995169,
-      "sortable_recall": 0.8850574712643678,
-      "precision_of_sorts": 0.9909159727479182,
+      "unsure_rate": 0.563707729468599,
+      "sortable_recall": 0.9688979039891819,
+      "precision_of_sorts": 0.9916955017301038,
       "wrong_sort_ci": [
         0.0018115942028985507,
         0.005736714975845411
       ],
       "contamination": {
-        "METAL": 0.01282051282051282,
+        "METAL": 0.0125,
         "ORGANIC": 0.0,
-        "PAPER": 0.0018315018315018315,
-        "PLASTIC": 0.01990049751243781
+        "PAPER": 0.0015408320493066256,
+        "PLASTIC": 0.01951219512195122
       },
       "confusion": [
         [

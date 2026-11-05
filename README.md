@@ -18,14 +18,15 @@ On 3,312 held-out test photos (never used for training, tuning or picking the th
 | --- | --- | --- |
 | 5-class accuracy | 82.0% | **99.1%** |
 | Items put in the wrong compartment | 5.6% | **0.4%** |
-| Sortable items sorted into the right compartment | 80.2% | **88.5%** |
-| Wrong sorts on a dataset it never trained on (recycling-dataset) | 4.1% | **2.2%** |
+| Sortable items sorted into the right compartment | 80.2% | **96.9%** |
+| Wrong sorts on a dataset it never trained on (recycling-dataset) | 4.1% | **2.7%** |
 | Latency per item (M5, fp16) | ~90 ms (fp32) | ~34 ms |
 
-v2 only auto-sorts when its trained head and the zero-shot prompts agree. Without that rule
-it sorts 98.1% of sortable test items right, but on photos from an unseen dataset it made 12%
-wrong sorts (soft plastics it had never seen). With the rule, more items go to UNSURE and far
-fewer go to the wrong bin.
+v2 only auto-sorts when its trained head and the zero-shot prompts agree, unless the head is
+at least 99% sure. Without that rule, a head trained without the recycling-dataset made 12%
+wrong sorts on it (soft plastics it had never seen). Always requiring agreement fixed that
+(2.2%) but sent too much paper to UNSURE; the 99% exception keeps nearly all of the safety and
+sorts 96.9% of sortable items.
 
 ![Sorting more vs sorting wrong](reports/tradeoff.png)
 
@@ -48,7 +49,8 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
                          │                                         │
                          └──────────► route ◄──────────────────────┘
                UNSURE if top class is "other", confidence < threshold,
-               the zero-shot guard says "other", or the two disagree;
+               the zero-shot guard says "other", or the two disagree
+               (and the head is under 99% sure);
                otherwise that compartment
 ```
 
@@ -57,7 +59,7 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
   400M parameters, and it keeps the zero-shot prompts working as a guard for things the datasets
   have no pictures of (hands, faces, an empty tray).
 - **Agreement**: an item is auto-sorted only if the trained head and the zero-shot prompts pick
-  the same class (`require_agreement` in `config.yaml`).
+  the same class, or the head is at least 99% sure (`agreement` in `config.yaml`).
 - **Head**: linear or one-hidden-layer MLP, picked by a small grid on validation macro-F1;
   class-balanced loss; label smoothing; temperature-calibrated softmax.
 - **Data**: three openly licensed Hugging Face datasets (MIT / Apache-2.0), labels mapped to the

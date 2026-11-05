@@ -138,9 +138,12 @@ def route(
     threshold: float,
     reject_class: str,
     guard: float | None,
-    agree: bool = False,
+    agree: float | None = None,
 ) -> tuple[str, str]:
-    """Pick the compartment and, for UNSURE, the reason. Anything doubtful goes to UNSURE."""
+    """Pick the compartment and, for UNSURE, the reason. Anything doubtful goes to UNSURE.
+
+    `agree`: unless the head is at least this confident, zero-shot must pick the same class.
+    """
     i = int(np.argmax(probs))
     top, confidence = classes[i], float(probs[i])
     if top == reject_class:
@@ -151,7 +154,7 @@ def route(
         other = float(zero_shot[classes.index(reject_class)])
         if other >= guard:
             return UNSURE, f"zero-shot guard: '{reject_class}' {other:.2f}"
-    if agree and zero_shot is not None:
+    if agree is not None and zero_shot is not None and confidence < agree:
         second = classes[int(np.argmax(zero_shot))]
         if second != top:
             return UNSURE, f"zero-shot disagrees: '{second}'"
@@ -193,7 +196,8 @@ class Classifier:
             self.note = f"no trained head at {cfg.head}; using zero-shot"
         self.mode = "trained" if self.head else "zero-shot"
         self.guard = cfg.guard if self.head else None
-        self.agree = bool(self.meta.get("agree", False))
+        agree = self.meta.get("agree")
+        self.agree = None if agree is None else float(agree)
         if cfg.threshold != "auto":
             self.threshold = float(cfg.threshold)
         else:

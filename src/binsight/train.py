@@ -104,7 +104,7 @@ def train(cfg: Config, log=print) -> dict:
     probs = head.probs(xv).numpy()
     points = sweep(
         probs, zero_shot, yv.numpy(), cfg.classes, cfg.reject_class, cfg.guard,
-        agree=cfg.require_agreement,
+        agree=cfg.agreement,
     )  # fmt: skip
     threshold = pick_threshold(points, tc.max_wrong_sort)
     chosen = next(p for p in points if p["threshold"] == threshold)
@@ -121,7 +121,7 @@ def train(cfg: Config, log=print) -> dict:
         "temperature": t,
         "threshold": threshold,
         "guard": cfg.guard,
-        "agree": cfg.require_agreement,
+        "agree": cfg.agreement,
         "max_wrong_sort": tc.max_wrong_sort,
         "val_operating_point": chosen,
         "val_macro_f1": best["val_macro_f1"],

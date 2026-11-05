@@ -42,11 +42,11 @@
     "threshold": 0.3,
     "trained": {
       "accuracy": 0.9846491228070176,
-      "coverage": 0.7302631578947368,
+      "coverage": 0.7379385964912281,
       "wrong_sort_rate": 0.009868421052631578,
-      "unsure_rate": 0.26973684210526316,
-      "sortable_recall": 0.9626373626373627,
-      "precision_of_sorts": 0.9864864864864865
+      "unsure_rate": 0.26206140350877194,
+      "sortable_recall": 0.9728937728937729,
+      "precision_of_sorts": 0.986627043090639
     },
     "zero_shot": {
       "accuracy": 0.881578947368421,
@@ -70,11 +70,11 @@
     "threshold": 0.3,
     "trained": {
       "accuracy": 0.823051948051948,
-      "coverage": 0.538961038961039,
-      "wrong_sort_rate": 0.022186147186147188,
-      "unsure_rate": 0.461038961038961,
-      "sortable_recall": 0.7443491816056118,
-      "precision_of_sorts": 0.9588353413654619
+      "coverage": 0.5454545454545454,
+      "wrong_sort_rate": 0.026515151515151516,
+      "unsure_rate": 0.45454545454545453,
+      "sortable_recall": 0.7474668745128605,
+      "precision_of_sorts": 0.9513888888888888
     },
     "zero_shot": {
       "accuracy": 0.8793290043290043,

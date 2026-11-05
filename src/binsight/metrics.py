@@ -44,7 +44,7 @@ def decisions(
     threshold: float,
     reject_class: str,
     guard: float | None,
-    agree: bool = False,
+    agree: float | None = None,
 ) -> np.ndarray:
     """Compartment chosen for every row, through the same `route` the live demo uses."""
     zs = zero_shot if zero_shot is not None else [None] * len(probs)
@@ -75,7 +75,7 @@ def operating_point(chosen: np.ndarray, truth: np.ndarray) -> dict[str, float]:
     }
 
 
-def sweep(probs, zero_shot, y, classes, reject_class, guard, grid=None, agree=False) -> list[dict]:
+def sweep(probs, zero_shot, y, classes, reject_class, guard, grid=None, agree=None) -> list[dict]:
     """Operating point at each threshold."""
     grid = np.round(np.arange(0.30, 0.995, 0.01), 2) if grid is None else grid
     truth = true_compartments(y, classes, reject_class)

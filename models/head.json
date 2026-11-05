@@ -12,15 +12,15 @@
   "temperature": 0.40738028287887573,
   "threshold": 0.3,
   "guard": 0.5,
-  "agree": true,
+  "agree": 0.99,
   "max_wrong_sort": 0.01,
   "val_operating_point": {
     "threshold": 0.3,
-    "coverage": 0.4003623188405797,
+    "coverage": 0.4350845410628019,
     "wrong_sort_rate": 0.008454106280193236,
-    "unsure_rate": 0.5996376811594203,
-    "sortable_recall": 0.8776200135226504,
-    "precision_of_sorts": 0.9788838612368024
+    "unsure_rate": 0.5649154589371981,
+    "sortable_recall": 0.9553752535496958,
+    "precision_of_sorts": 0.9805690492713394
   },
   "val_macro_f1": 0.9800370561525273,
   "grid": [
@@ -82,5 +82,5 @@
     }
   ],
   "train_embeddings": 46353,
-  "trained_at": "2026-11-05T10:15:26"
+  "trained_at": "2026-11-05T10:23:04"
 }

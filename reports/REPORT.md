@@ -1,10 +1,10 @@
 # BinSight accuracy report
 
-Backbone `google/siglip2-so400m-patch16-256` (frozen) + trained head (MLP, 512 hidden), trained 2026-11-05T10:15:26. Test set: 3312 held-out images never used for training, model selection, calibration or threshold choice.
+Backbone `google/siglip2-so400m-patch16-256` (frozen) + trained head (MLP, 512 hidden), trained 2026-11-05T10:23:04. Test set: 3312 held-out images never used for training, model selection, calibration or threshold choice.
 
 ## Summary
 
-- **Deployed system** (trained head + zero-shot guard + agreement, threshold 0.30): puts **0.4%** of items in the wrong compartment (95% CI 0.2–0.6%) and sorts **88.5%** of the items that belong in a compartment into the right one; everything else goes to UNSURE.
+- **Deployed system** (trained head + zero-shot guard + agreement, threshold 0.30): puts **0.4%** of items in the wrong compartment (95% CI 0.2–0.6%) and sorts **96.9%** of the items that belong in a compartment into the right one; everything else goes to UNSURE.
 - **v1 zero-shot** at its 0.60 threshold: 5.6% wrong sorts (CI 4.9–6.4%), 80.2% of sortable items sorted right.
 - 5-class accuracy: trained **99.1%** (CI 98.8–99.4%) vs zero-shot 82.0% (CI 80.6–83.2%).
 
@@ -18,7 +18,7 @@ Wrong sorts are what matter for a bin: one wrong item contaminates a compartment
 | zero-shot, tuned threshold | 0.88 | 82.0% | 0.785 | 0.6% | 58.4% | 26.7% | 73.3% | 0.100 |
 | trained head | 0.63 | 99.1% | 0.987 | 0.5% | 98.9% | 44.7% | 55.3% | 0.006 |
 | trained + guard | 0.54 | 99.1% | 0.987 | 0.5% | 98.1% | 44.3% | 55.7% | 0.006 |
-| trained + guard + agreement (deployed) | 0.30 | 99.1% | 0.987 | 0.4% | 88.5% | 39.9% | 60.1% | 0.006 |
+| trained + guard + agreement (deployed) | 0.30 | 99.1% | 0.987 | 0.4% | 96.9% | 43.6% | 56.4% | 0.006 |
 
 Accuracy and macro-F1 use the top class over all five classes (no UNSURE). Wrong sorts, auto-sorted and UNSURE are shares of all test items after routing; an out-of-scope item ('other') auto-sorted into any compartment counts as a wrong sort. 'Sortable sorted right' is the share of plastic/paper/metal/organic items that reached the right compartment; auto-sorted can be at most 44.7% here because the rest of the test set is 'other'. ECE is expected calibration error of the confidence (lower is better).
 
@@ -38,7 +38,7 @@ Compartment contamination (share of auto-sorted items that do not belong there):
 
 | Compartment | v1 zero-shot | Deployed |
 | --- | --- | --- |
-| METAL | 26.1% | 1.3% |
+| METAL | 26.1% | 1.2% |
 | ORGANIC | 15.9% | 0.0% |
 | PAPER | 2.2% | 0.2% |
 | PLASTIC | 17.5% | 2.0% |
@@ -61,9 +61,9 @@ The test set above shares photographers, cameras and backgrounds with training. 
 | --- | --- | --- | --- | --- | --- |
 | `omasteam/waste-garbage-management-dataset` | 18403 | not comparable: training had no organic | | 81.4% | 5.5% |
 | `garythung/trashnet` | 1824 | 98.5% | 1.0% | 88.2% | 4.1% |
-| `viola77data/recycling-dataset` | 1848 | 82.3% | 2.2% | 87.9% | 4.1% |
+| `viola77data/recycling-dataset` | 1848 | 82.3% | 2.7% | 87.9% | 4.1% |
 
-What this found: plastic in the two larger datasets is mostly bottles, so a head trained without the recycling-dataset mistook soft plastics (bags, wrappers) and hard plastic containers for paper or 'other', confidently. Zero-shot SigLIP2 knows what a wrapper is. Requiring the trained head and zero-shot to agree before auto-sorting cut wrong sorts on that unseen dataset from 12.0% to about 2%. It is now part of the deployed system. The cost shows on the main test set: sortable items sorted right drop from 98.1% to 88.5%, mostly paper, where zero-shot is weakest; those items go to UNSURE, not to a wrong bin. Turn it off with `require_agreement: false` (then re-run `binsight train`).
+What this found: plastic in the two larger datasets is mostly bottles, so a head trained without the recycling-dataset mistook soft plastics (bags, wrappers) and hard plastic containers for paper or 'other', confidently. Zero-shot SigLIP2 knows what a wrapper is. So the deployed system only auto-sorts when the trained head and zero-shot pick the same class, unless the head is at least 99% sure. Always requiring agreement cut wrong sorts on the unseen dataset from 12.0% to 2.2% but sent many paper items to UNSURE (zero-shot is weak on paper); the confidence exception, chosen on validation and this unseen-dataset test, keeps most of the safety (about 2.7%) while sorting far more. On the main test set: sortable items sorted right 98.1% without the rule, 96.9% with it. Set `agreement` in `config.yaml` (1.0 = always require, null = off), then re-run `binsight train`.
 
 ## Calibration
 
@@ -93,7 +93,7 @@ Softmax temperature 0.41, fitted on validation. Test ECE 0.150 before -> 0.006 a
 2. A small head (grid over linear / MLP, learning rate, weight decay; best validation macro-F1 kept) is trained on those embeddings with class-balanced cross-entropy.
 3. A softmax temperature is fitted on validation.
 4. The zero-shot prompts from v1 still run on the same embedding as a guard: if they say 'other' with probability >= 0.5, the item goes to UNSURE. This covers things the datasets have no pictures of (hands, faces, an empty tray, phones).
-5. Agreement: the item is auto-sorted only if the trained head and the zero-shot prompts pick the same class (see the unseen-source test).
+5. Agreement: the item is auto-sorted only if the trained head and the zero-shot prompts pick the same class, or the head is at least 99% sure (see the unseen-source test).
 6. The UNSURE threshold is the lowest one meeting the wrong-sort target on validation.
 
 Validation grid:
