@@ -21,6 +21,10 @@ reject_class: other     # top class that always routes to UNSURE
 # Zero-shot guard for things the training data has no examples of (hands, faces, empty
 # tray, phones): UNSURE if the zero-shot "other" score is at least this. null disables it.
 guard: 0.5
+# Auto-sort only when the trained head and the zero-shot prompts pick the same class.
+# On photos from a dataset it never trained on, this cut wrong sorts from 12% to about 2%
+# (see reports/REPORT.md, "Photos from an unseen source").
+require_agreement: true
 
 # Order matters: it is the class order of the head and of every score output. One
 # compartment per class (class name upper-cased), plus UNSURE. Used by zero-shot and the guard.

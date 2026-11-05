@@ -20,7 +20,7 @@ from .model import Backbone, Head, save_head
 def _arrays(cfg: Config):
     split = load_split(cfg)
     parts = {name: split["split"] == i for i, name in enumerate(SPLITS)}
-    x_aug, y_aug = load_train_views(cfg, split)
+    x_aug, y_aug, _ = load_train_views(cfg, split)
     x_train = np.concatenate([split["emb"][parts["train"]], x_aug])
     y_train = np.concatenate([split["y"][parts["train"]], y_aug])
     as_t = lambda a: torch.from_numpy(np.asarray(a, np.float32))  # noqa: E731
@@ -97,12 +97,15 @@ def train(cfg: Config, log=print) -> dict:
     after = F.cross_entropy(logits / t, yv).item()
     log(f"temperature {t:.3f}: val NLL {before:.4f} -> {after:.4f}")
 
-    # Threshold for the deployed system: head + zero-shot guard, routed exactly as live.
+    # Threshold for the deployed system: head + zero-shot guard (+ agreement), routed as live.
     backbone = Backbone(arrays["backbone"], cfg.device, cfg.dtype)
     text = backbone.class_text_embeds(cfg.prompts, cfg.prompt_template)
     zero_shot = (backbone.scale * xv @ text.T).softmax(-1).numpy()
     probs = head.probs(xv).numpy()
-    points = sweep(probs, zero_shot, yv.numpy(), cfg.classes, cfg.reject_class, cfg.guard)
+    points = sweep(
+        probs, zero_shot, yv.numpy(), cfg.classes, cfg.reject_class, cfg.guard,
+        agree=cfg.require_agreement,
+    )  # fmt: skip
     threshold = pick_threshold(points, tc.max_wrong_sort)
     chosen = next(p for p in points if p["threshold"] == threshold)
     log(
@@ -118,6 +121,7 @@ def train(cfg: Config, log=print) -> dict:
         "temperature": t,
         "threshold": threshold,
         "guard": cfg.guard,
+        "agree": cfg.require_agreement,
         "max_wrong_sort": tc.max_wrong_sort,
         "val_operating_point": chosen,
         "val_macro_f1": best["val_macro_f1"],

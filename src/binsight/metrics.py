@@ -44,12 +44,13 @@ def decisions(
     threshold: float,
     reject_class: str,
     guard: float | None,
+    agree: bool = False,
 ) -> np.ndarray:
     """Compartment chosen for every row, through the same `route` the live demo uses."""
     zs = zero_shot if zero_shot is not None else [None] * len(probs)
     return np.array(
         [
-            route(p, z, classes, threshold, reject_class, guard)[0]
+            route(p, z, classes, threshold, reject_class, guard, agree)[0]
             for p, z in zip(probs, zs, strict=True)
         ]
     )
@@ -74,13 +75,13 @@ def operating_point(chosen: np.ndarray, truth: np.ndarray) -> dict[str, float]:
     }
 
 
-def sweep(probs, zero_shot, y, classes, reject_class, guard, grid=None) -> list[dict]:
+def sweep(probs, zero_shot, y, classes, reject_class, guard, grid=None, agree=False) -> list[dict]:
     """Operating point at each threshold."""
     grid = np.round(np.arange(0.30, 0.995, 0.01), 2) if grid is None else grid
     truth = true_compartments(y, classes, reject_class)
     out = []
     for t in grid:
-        chosen = decisions(probs, zero_shot, classes, float(t), reject_class, guard)
+        chosen = decisions(probs, zero_shot, classes, float(t), reject_class, guard, agree)
         out.append({"threshold": float(t), **operating_point(chosen, truth)})
     return out
 

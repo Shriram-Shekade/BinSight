@@ -14,12 +14,18 @@ for the measured accuracy against v1.
 
 On 3,312 held-out test photos (never used for training, tuning or picking the threshold):
 
-| | v1 zero-shot | v2 trained + guard |
+| | v1 zero-shot | v2 deployed |
 | --- | --- | --- |
 | 5-class accuracy | 82.0% | **99.1%** |
-| Items put in the wrong compartment | 5.6% | **0.5%** |
-| Sortable items sorted into the right compartment | 80.2% | **98.1%** |
+| Items put in the wrong compartment | 5.6% | **0.4%** |
+| Sortable items sorted into the right compartment | 80.2% | **88.5%** |
+| Wrong sorts on a dataset it never trained on (recycling-dataset) | 4.1% | **2.2%** |
 | Latency per item (M5, fp16) | ~90 ms (fp32) | ~34 ms |
+
+v2 only auto-sorts when its trained head and the zero-shot prompts agree. Without that rule
+it sorts 98.1% of sortable test items right, but on photos from an unseen dataset it made 12%
+wrong sorts (soft plastics it had never seen). With the rule, more items go to UNSURE and far
+fewer go to the wrong bin.
 
 ![Sorting more vs sorting wrong](reports/tradeoff.png)
 
@@ -42,13 +48,16 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
                          │                                         │
                          └──────────► route ◄──────────────────────┘
                UNSURE if top class is "other", confidence < threshold,
-               or the zero-shot guard says "other"; otherwise that compartment
+               the zero-shot guard says "other", or the two disagree;
+               otherwise that compartment
 ```
 
 - **Backbone**: `google/siglip2-so400m-patch16-256`, frozen. Only the head's weights are
   trained. With about 20k images, a frozen strong encoder generalises better than fine-tuning
   400M parameters, and it keeps the zero-shot prompts working as a guard for things the datasets
   have no pictures of (hands, faces, an empty tray).
+- **Agreement**: an item is auto-sorted only if the trained head and the zero-shot prompts pick
+  the same class (`require_agreement` in `config.yaml`).
 - **Head**: linear or one-hidden-layer MLP, picked by a small grid on validation macro-F1;
   class-balanced loss; label smoothing; temperature-calibrated softmax.
 - **Data**: three openly licensed Hugging Face datasets (MIT / Apache-2.0), labels mapped to the
@@ -69,6 +78,7 @@ rebuild everything from the public data:
 ```bash
 uv run binsight prepare    # download datasets, embed, de-duplicate, split (~35 min on an M5)
 uv run binsight train      # train the head, calibrate, pick the threshold (~ a few minutes)
+uv run binsight crosscheck # harder test: leave each dataset out in turn
 uv run binsight evaluate   # held-out test results -> reports/REPORT.md
 ```
 

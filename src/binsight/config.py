@@ -64,6 +64,7 @@ class Config:
     threshold_step: float
     reject_class: str
     guard: float | None
+    require_agreement: bool
     prompts: dict[str, list[str]]
     data: DataConfig
     train: TrainConfig

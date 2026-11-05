@@ -10,16 +10,17 @@
   "dim": 1152,
   "hidden": 512,
   "temperature": 0.40738028287887573,
-  "threshold": 0.54,
+  "threshold": 0.3,
   "guard": 0.5,
+  "agree": true,
   "max_wrong_sort": 0.01,
   "val_operating_point": {
-    "threshold": 0.54,
-    "coverage": 0.4429347826086957,
-    "wrong_sort_rate": 0.009963768115942028,
-    "unsure_rate": 0.5570652173913043,
-    "sortable_recall": 0.9695740365111561,
-    "precision_of_sorts": 0.9775051124744376
+    "threshold": 0.3,
+    "coverage": 0.4003623188405797,
+    "wrong_sort_rate": 0.008454106280193236,
+    "unsure_rate": 0.5996376811594203,
+    "sortable_recall": 0.8776200135226504,
+    "precision_of_sorts": 0.9788838612368024
   },
   "val_macro_f1": 0.9800370561525273,
   "grid": [
@@ -81,5 +82,5 @@
     }
   ],
   "train_embeddings": 46353,
-  "trained_at": "2026-10-28T17:22:30"
+  "trained_at": "2026-11-05T10:15:26"
 }

@@ -138,6 +138,7 @@ def route(
     threshold: float,
     reject_class: str,
     guard: float | None,
+    agree: bool = False,
 ) -> tuple[str, str]:
     """Pick the compartment and, for UNSURE, the reason. Anything doubtful goes to UNSURE."""
     i = int(np.argmax(probs))
@@ -150,6 +151,10 @@ def route(
         other = float(zero_shot[classes.index(reject_class)])
         if other >= guard:
             return UNSURE, f"zero-shot guard: '{reject_class}' {other:.2f}"
+    if agree and zero_shot is not None:
+        second = classes[int(np.argmax(zero_shot))]
+        if second != top:
+            return UNSURE, f"zero-shot disagrees: '{second}'"
     return top.upper(), ""
 
 
@@ -188,6 +193,7 @@ class Classifier:
             self.note = f"no trained head at {cfg.head}; using zero-shot"
         self.mode = "trained" if self.head else "zero-shot"
         self.guard = cfg.guard if self.head else None
+        self.agree = bool(self.meta.get("agree", False))
         if cfg.threshold != "auto":
             self.threshold = float(cfg.threshold)
         else:
@@ -212,7 +218,13 @@ class Classifier:
         probs, zero_shot = self.probs(self.backbone.embed_images([image]))
         latency = (time.perf_counter() - start) * 1000
         compartment, reason = route(
-            probs[0], zero_shot[0], self.classes, threshold, self.cfg.reject_class, self.guard
+            probs[0],
+            zero_shot[0],
+            self.classes,
+            threshold,
+            self.cfg.reject_class,
+            self.guard,
+            self.agree,
         )
         scores = dict(zip(self.classes, probs[0].tolist(), strict=True))
         top = max(scores, key=scores.__getitem__)

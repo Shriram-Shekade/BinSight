@@ -25,13 +25,14 @@ from .model import ZERO_SHOT_THRESHOLD, Backbone, load_head
 
 # Reference data-viz palette (light surface).
 SURFACE, INK, INK_2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
-SERIES = ["#2a78d6", "#eb6834", "#1baf7a"]  # categorical slots 1-3, fixed order
+SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # categorical slots 1-4, fixed order
 BLUES = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
 
 
-def _system(name, probs, zero_shot, y, classes, cfg, threshold, guard, logits_raw=None):
+def _system(name, probs, zero_shot, y, classes, cfg, threshold, guard, logits_raw=None,
+            agree=False):  # fmt: skip
     truth = true_compartments(y, classes, cfg.reject_class)
-    chosen = decisions(probs, zero_shot, classes, threshold, cfg.reject_class, guard)
+    chosen = decisions(probs, zero_shot, classes, threshold, cfg.reject_class, guard, agree)
     pred = probs.argmax(1)
     cm = confusion(y, pred, len(classes))
     wrong = ((chosen != UNSURE) & (chosen != truth)).astype(float)
@@ -44,6 +45,7 @@ def _system(name, probs, zero_shot, y, classes, cfg, threshold, guard, logits_ra
         "name": name,
         "threshold": threshold,
         "guard": guard,
+        "agree": agree,
         "accuracy": float(correct.mean()),
         "accuracy_ci": bootstrap_ci(correct),
         "macro_f1": float(per_class(cm)["f1"].mean()),
@@ -154,8 +156,8 @@ def _ci(ci) -> str:
 
 
 def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_source: dict,
-            n_test: int) -> str:  # fmt: skip
-    zs_v1, zs_tuned, head, deployed = systems
+            n_test: int, cross: dict | None) -> str:  # fmt: skip
+    zs_v1, zs_tuned, head, guarded, deployed = systems
     classes = cfg.classes
     head_kind = "linear" if meta["hidden"] == 0 else f"MLP, {meta['hidden']} hidden"
     other = deployed["per_class"]["support"][classes.index(cfg.reject_class)]
@@ -169,7 +171,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "",
         "## Summary",
         "",
-        f"- **Deployed system** (trained head + zero-shot guard, threshold "
+        f"- **Deployed system** (trained head + zero-shot guard + agreement, threshold "
         f"{deployed['threshold']:.2f}): puts **{_pct(deployed['wrong_sort_rate'])}** of items in "
         f"the wrong compartment (95% CI {_ci(deployed['wrong_sort_ci'])}) and sorts "
         f"**{_pct(deployed['sortable_recall'])}** of the items that belong in a compartment into "
@@ -241,6 +243,46 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
     ]
     for source, v in per_source.items():
         lines.append(f"| `{source}` | {v['n']} | {_pct(v['zero_shot'])} | {_pct(v['trained'])} |")
+    if cross:
+        lines += [
+            "",
+            "## Photos from an unseen source",
+            "",
+            "The test set above shares photographers, cameras and backgrounds with training. "
+            "This harder test trains without one whole dataset and tests on all of it, which is "
+            "closer to a new webcam on a new campus. Same recipe and settings as deployed.",
+            "",
+            "| Held-out dataset | Images | Trained accuracy | Trained wrong sorts | "
+            "v1 zero-shot accuracy | v1 wrong sorts |",
+            "| --- | --- | --- | --- | --- | --- |",
+        ]
+        for source, r in cross.items():
+            missing = r.get("classes_missing_from_training", [])
+            if missing:
+                lines.append(
+                    f"| `{source}` | {r['test_images']} | not comparable: training had no "
+                    f"{', '.join(missing)} | | {_pct(r['zero_shot']['accuracy'])} | "
+                    f"{_pct(r['zero_shot']['wrong_sort_rate'])} |"
+                )
+                continue
+            lines.append(
+                f"| `{source}` | {r['test_images']} | {_pct(r['trained']['accuracy'])} | "
+                f"{_pct(r['trained']['wrong_sort_rate'])} | {_pct(r['zero_shot']['accuracy'])} | "
+                f"{_pct(r['zero_shot']['wrong_sort_rate'])} |"
+            )
+        lines += [
+            "",
+            "What this found: plastic in the two larger datasets is mostly bottles, so a head "
+            "trained without the recycling-dataset mistook soft plastics (bags, wrappers) and "
+            "hard plastic containers for paper or 'other', confidently. Zero-shot SigLIP2 knows "
+            "what a wrapper is. Requiring the trained head and zero-shot to agree before "
+            "auto-sorting cut wrong sorts on that unseen dataset from 12.0% to about 2%. It is "
+            "now part of the deployed system. The cost shows on the main test set: sortable "
+            f"items sorted right drop from {_pct(guarded['sortable_recall'])} to "
+            f"{_pct(deployed['sortable_recall'])}, mostly paper, where zero-shot is weakest; "
+            "those items go to UNSURE, not to a wrong bin. Turn it off with "
+            "`require_agreement: false` (then re-run `binsight train`).",
+        ]
     lines += [
         "",
         "## Calibration",
@@ -295,7 +337,9 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "4. The zero-shot prompts from v1 still run on the same embedding as a guard: if they say "
         f"'other' with probability >= {cfg.guard}, the item goes to UNSURE. This covers things "
         "the datasets have no pictures of (hands, faces, an empty tray, phones).",
-        "5. The UNSURE threshold is the lowest one meeting the wrong-sort target on validation.",
+        "5. Agreement: the item is auto-sorted only if the trained head and the zero-shot "
+        "prompts pick the same class (see the unseen-source test).",
+        "6. The UNSURE threshold is the lowest one meeting the wrong-sort target on validation.",
         "",
         "Validation grid:",
         "",
@@ -356,21 +400,18 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
     head_threshold = pick_threshold(
         sweep(v_probs, None, v_y, classes, rc, None), meta["max_wrong_sort"]
     )
+    guard_threshold = pick_threshold(
+        sweep(v_probs, v_zs, v_y, classes, rc, meta["guard"]), meta["max_wrong_sort"]
+    )
     systems = [
         _system("v1 zero-shot", t_zs, None, t_y, classes, cfg, ZERO_SHOT_THRESHOLD, None),
         _system("zero-shot, tuned threshold", t_zs, None, t_y, classes, cfg, zs_threshold, None),
         _system("trained head", t_probs, None, t_y, classes, cfg, head_threshold, None, t_raw),
-        _system(
-            "trained + guard (deployed)",
-            t_probs,
-            t_zs,
-            t_y,
-            classes,
-            cfg,
-            meta["threshold"],
-            meta["guard"],
-        ),  # fmt: skip
-    ]
+        _system("trained + guard", t_probs, t_zs, t_y, classes, cfg, guard_threshold,
+                meta["guard"]),
+        _system("trained + guard + agreement (deployed)", t_probs, t_zs, t_y, classes, cfg,
+                meta["threshold"], meta["guard"], agree=meta.get("agree", False)),
+    ]  # fmt: skip
     for s in systems:
         log(
             f"  {s['name']:<28} acc {s['accuracy']:.3f}  wrong-sort {s['wrong_sort_rate']:.3%}  "
@@ -394,11 +435,15 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
         ("zero-shot", sweep(t_zs, None, t_y, classes, rc, None), systems[1]),
         ("trained", sweep(t_probs, None, t_y, classes, rc, None), systems[2]),
         ("trained + guard", sweep(t_probs, t_zs, t_y, classes, rc, meta["guard"]), systems[3]),
-    ]
+        ("+ agreement", sweep(t_probs, t_zs, t_y, classes, rc, meta["guard"],
+                              agree=meta.get("agree", False)), systems[4]),
+    ]  # fmt: skip
     _plot_tradeoff(curves, systems[0], meta["max_wrong_sort"], out / "tradeoff.png")
     (out / "metrics.json").write_text(
         json.dumps({"systems": systems, "per_source": per_source, "data": stats}, indent=2) + "\n"
     )
     path = out / "REPORT.md"
-    path.write_text(_report(cfg, stats, meta, systems, per_source, len(t_y)))
+    cross_path = out / "crosscheck.json"
+    cross = json.loads(cross_path.read_text()) if cross_path.exists() else None
+    path.write_text(_report(cfg, stats, meta, systems, per_source, len(t_y), cross))
     return path

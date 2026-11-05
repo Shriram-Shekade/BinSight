@@ -1,0 +1,88 @@
+{
+  "omasteam/waste-garbage-management-dataset": {
+    "test_images": 18403,
+    "classes_missing_from_training": [
+      "organic"
+    ],
+    "classes_present": {
+      "plastic": 1899,
+      "paper": 3305,
+      "metal": 1009,
+      "organic": 992,
+      "other": 11198
+    },
+    "threshold": 0.3,
+    "trained": {
+      "accuracy": 0.05395859370754768,
+      "coverage": 0.0,
+      "wrong_sort_rate": 0.0,
+      "unsure_rate": 1.0,
+      "sortable_recall": 0.0,
+      "precision_of_sorts": 1.0
+    },
+    "zero_shot": {
+      "accuracy": 0.8141607346628267,
+      "coverage": 0.35896321251969787,
+      "wrong_sort_rate": 0.05461066130522198,
+      "unsure_rate": 0.6410367874803021,
+      "sortable_recall": 0.7773768216516308,
+      "precision_of_sorts": 0.8478655767484106
+    }
+  },
+  "garythung/trashnet": {
+    "test_images": 1824,
+    "classes_missing_from_training": [],
+    "classes_present": {
+      "plastic": 361,
+      "paper": 675,
+      "metal": 329,
+      "organic": 0,
+      "other": 459
+    },
+    "threshold": 0.3,
+    "trained": {
+      "accuracy": 0.9846491228070176,
+      "coverage": 0.7302631578947368,
+      "wrong_sort_rate": 0.009868421052631578,
+      "unsure_rate": 0.26973684210526316,
+      "sortable_recall": 0.9626373626373627,
+      "precision_of_sorts": 0.9864864864864865
+    },
+    "zero_shot": {
+      "accuracy": 0.881578947368421,
+      "coverage": 0.7412280701754386,
+      "wrong_sort_rate": 0.04111842105263158,
+      "unsure_rate": 0.25877192982456143,
+      "sortable_recall": 0.9355311355311355,
+      "precision_of_sorts": 0.9445266272189349
+    }
+  },
+  "viola77data/recycling-dataset": {
+    "test_images": 1848,
+    "classes_missing_from_training": [],
+    "classes_present": {
+      "plastic": 524,
+      "paper": 499,
+      "metal": 260,
+      "organic": 0,
+      "other": 565
+    },
+    "threshold": 0.3,
+    "trained": {
+      "accuracy": 0.823051948051948,
+      "coverage": 0.538961038961039,
+      "wrong_sort_rate": 0.022186147186147188,
+      "unsure_rate": 0.461038961038961,
+      "sortable_recall": 0.7443491816056118,
+      "precision_of_sorts": 0.9588353413654619
+    },
+    "zero_shot": {
+      "accuracy": 0.8793290043290043,
+      "coverage": 0.6374458874458875,
+      "wrong_sort_rate": 0.04112554112554113,
+      "unsure_rate": 0.3625541125541126,
+      "sortable_recall": 0.8589243959469992,
+      "precision_of_sorts": 0.935483870967742
+    }
+  }
+}
