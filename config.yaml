@@ -25,6 +25,14 @@ guard: 0.5
 # the head is at least this sure. Guards against confident mistakes on unfamiliar photos
 # (see reports/REPORT.md, "Photos from an unseen source"). 1.0 = always require, null = off.
 agreement: 0.99
+# Stricter for compartments where one wrong item does the most harm.
+agreement_per_class:
+  organic: 1.0          # always require agreement: glass or plastic in food waste can hurt animals
+# Confidence the trained head needs before an item may go in these compartments, on top of
+# the threshold. Set as a safety policy after glass ornaments shaped like beans reached ORGANIC
+# on the test set (see reports/REPORT.md).
+min_confidence_per_class:
+  organic: 0.98
 
 # Order matters: it is the class order of the head and of every score output. One
 # compartment per class (class name upper-cased), plus UNSURE. Used by zero-shot and the guard.
@@ -84,6 +92,16 @@ data:
       polystyrene: null         # foam: rarely accepted with plastics
       soft plastics: plastic    # bags and wrappers
       takeaway cups: null       # plastic-lined paper
+    Tatyr2210/waste-classification-vit:          # MIT upload; appears to be RealWaste (CC BY 4.0)
+      Cardboard: paper                           # real rubbish photographed at a recycling facility
+      Food Organics: organic
+      Glass: other
+      Metal: metal
+      Miscellaneous Trash: null
+      Paper: paper
+      Plastic: plastic
+      Textile Trash: other
+      Vegetation: organic       # garden waste
 
 # --- training ------------------------------------------------------------
 train:

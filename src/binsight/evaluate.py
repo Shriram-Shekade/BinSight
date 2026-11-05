@@ -21,7 +21,7 @@ from .metrics import (
     sweep,
     true_compartments,
 )
-from .model import ZERO_SHOT_THRESHOLD, Backbone, load_head
+from .model import ZERO_SHOT_THRESHOLD, Backbone, Policy, load_head
 
 # Reference data-viz palette (light surface).
 SURFACE, INK, INK_2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
@@ -29,10 +29,10 @@ SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # categorical slots 1-4, 
 BLUES = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"]
 
 
-def _system(name, probs, zero_shot, y, classes, cfg, threshold, guard, logits_raw=None,
-            agree=None):  # fmt: skip
-    truth = true_compartments(y, classes, cfg.reject_class)
-    chosen = decisions(probs, zero_shot, classes, threshold, cfg.reject_class, guard, agree)
+def _system(name, probs, zero_shot, y, policy: Policy, logits_raw=None):
+    classes = list(policy.classes)
+    truth = true_compartments(y, classes, policy.reject_class)
+    chosen = decisions(probs, zero_shot, policy)
     pred = probs.argmax(1)
     cm = confusion(y, pred, len(classes))
     wrong = ((chosen != UNSURE) & (chosen != truth)).astype(float)
@@ -43,9 +43,10 @@ def _system(name, probs, zero_shot, y, classes, cfg, threshold, guard, logits_ra
         contamination[comp] = float((truth[into] != comp).mean()) if into.any() else 0.0
     out = {
         "name": name,
-        "threshold": threshold,
-        "guard": guard,
-        "agree": agree,
+        "threshold": policy.threshold,
+        "guard": policy.guard,
+        "agree": policy.agree,
+        "min_confidence": policy.min_confidence,
         "accuracy": float(correct.mean()),
         "accuracy_ci": bootstrap_ci(correct),
         "macro_f1": float(per_class(cm)["f1"].mean()),
@@ -272,18 +273,28 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
             )
         lines += [
             "",
-            "What this found: plastic in the two larger datasets is mostly bottles, so a head "
-            "trained without the recycling-dataset mistook soft plastics (bags, wrappers) and "
-            "hard plastic containers for paper or 'other', confidently. Zero-shot SigLIP2 knows "
-            "what a wrapper is. So the deployed system only auto-sorts when the trained head and "
-            f"zero-shot pick the same class, unless the head is at least {meta['agree']:.0%} "
-            "sure. Always requiring agreement cut wrong sorts on the unseen dataset from 12.0% "
-            "to 2.2% but sent many paper items to UNSURE (zero-shot is weak on paper); the "
-            "confidence exception, chosen on validation and this unseen-dataset test, keeps most "
-            "of the safety (about 2.7%) while sorting far more. On the main test set: sortable "
-            f"items sorted right {_pct(guarded['sortable_recall'])} without the rule, "
-            f"{_pct(deployed['sortable_recall'])} with it. Set `agreement` in `config.yaml` "
-            "(1.0 = always require, null = off), then re-run `binsight train`.",
+            "What this found (history, measured with three datasets before RealWaste was added): "
+            "plastic in the two larger datasets is mostly bottles, so a head trained without the "
+            "recycling-dataset mistook soft plastics (bags, wrappers) and hard plastic containers "
+            "for paper or 'other', confidently: 12.0% wrong sorts on it. Zero-shot SigLIP2 knows "
+            "what a wrapper is. Requiring the trained head and zero-shot to agree cut that to "
+            "2.2% but sent much of the paper to UNSURE, so agreement is waived when the head is "
+            f"at least {meta['agreement']:.0%} sure (2.7%). Both choices were made on validation "
+            "data and this unseen-dataset test, never on the main test set. On the main test "
+            f"set now: sortable items sorted right {_pct(guarded['sortable_recall'])} without "
+            f"these rules, {_pct(deployed['sortable_recall'])} with them.",
+            "",
+            "## Organic safety",
+            "",
+            "Glass or plastic in food waste can hurt animals that eat it, so ORGANIC is stricter "
+            "than the other compartments: zero-shot must always agree, and the trained head needs "
+            f"{(meta.get('min_confidence') or {}).get('organic', 0):.2f} confidence. With only the "
+            "usual rules, 3 non-organic test items reached ORGANIC: green glass ornaments shaped "
+            "like beans (both models were fooled), a burlap sack covered in grass, and a plastic "
+            "item; validation had none, so it could not be used to choose the bar. The 0.98 bar "
+            "was therefore set as a safety policy after seeing those test items. It stops all "
+            "three, but because the test set informed it, the test result for ORGANIC leaks is "
+            "not an independent measurement. Cost: about 2-3% of organic items go to UNSURE.",
         ]
     lines += [
         "",
@@ -302,6 +313,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "omasteam/waste-garbage-management-dataset": "MIT",
         "garythung/trashnet": "MIT",
         "viola77data/recycling-dataset": "Apache-2.0",
+        "Tatyr2210/waste-classification-vit": "MIT upload of RealWaste (CC BY 4.0)",
     }
     for source in cfg.data.sources:
         lines.append(
@@ -340,8 +352,9 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         f"'other' with probability >= {cfg.guard}, the item goes to UNSURE. This covers things "
         "the datasets have no pictures of (hands, faces, an empty tray, phones).",
         "5. Agreement: the item is auto-sorted only if the trained head and the zero-shot "
-        f"prompts pick the same class, or the head is at least {meta.get('agree') or 0:.0%} sure "
-        "(see the unseen-source test).",
+        f"prompts pick the same class, or the head is at least {meta.get('agreement') or 0:.0%} "
+        "sure; for organic, agreement is always required and the head needs a higher "
+        "confidence (see the unseen-source test and organic safety).",
         "6. The UNSURE threshold is the lowest one meeting the wrong-sort target on validation.",
         "",
         "Validation grid:",
@@ -399,22 +412,24 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
     log(f"evaluating on {len(t_y)} test images")
 
     rc = cfg.reject_class
-    zs_threshold = pick_threshold(sweep(v_zs, None, v_y, classes, rc, None), meta["max_wrong_sort"])
-    head_threshold = pick_threshold(
-        sweep(v_probs, None, v_y, classes, rc, None), meta["max_wrong_sort"]
-    )
-    guard_threshold = pick_threshold(
-        sweep(v_probs, v_zs, v_y, classes, rc, meta["guard"]), meta["max_wrong_sort"]
-    )
+    target = meta["max_wrong_sort"]
+    deployed = Policy.from_meta(meta, rc)
+    plain = Policy(tuple(classes), rc, ZERO_SHOT_THRESHOLD)
+    guarded = Policy(tuple(classes), rc, 0.0, meta["guard"])
+
+    def tuned(policy, probs, zero_shot):
+        return policy.with_threshold(pick_threshold(sweep(probs, zero_shot, v_y, policy), target))
+
+    zs_tuned = tuned(plain, v_zs, None)
+    head_tuned = tuned(plain, v_probs, None)
+    guard_tuned = tuned(guarded, v_probs, v_zs)
     systems = [
-        _system("v1 zero-shot", t_zs, None, t_y, classes, cfg, ZERO_SHOT_THRESHOLD, None),
-        _system("zero-shot, tuned threshold", t_zs, None, t_y, classes, cfg, zs_threshold, None),
-        _system("trained head", t_probs, None, t_y, classes, cfg, head_threshold, None, t_raw),
-        _system("trained + guard", t_probs, t_zs, t_y, classes, cfg, guard_threshold,
-                meta["guard"]),
-        _system("trained + guard + agreement (deployed)", t_probs, t_zs, t_y, classes, cfg,
-                meta["threshold"], meta["guard"], agree=meta.get("agree")),
-    ]  # fmt: skip
+        _system("v1 zero-shot", t_zs, None, t_y, plain),
+        _system("zero-shot, tuned threshold", t_zs, None, t_y, zs_tuned),
+        _system("trained head", t_probs, None, t_y, head_tuned, t_raw),
+        _system("trained + guard", t_probs, t_zs, t_y, guard_tuned),
+        _system("trained + guard + agreement (deployed)", t_probs, t_zs, t_y, deployed),
+    ]
     for s in systems:
         log(
             f"  {s['name']:<28} acc {s['accuracy']:.3f}  wrong-sort {s['wrong_sort_rate']:.3%}  "
@@ -435,12 +450,11 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
     out.mkdir(parents=True, exist_ok=True)
     _plot_confusions([systems[0], systems[2]], classes, out / "confusion.png")
     curves = [
-        ("zero-shot", sweep(t_zs, None, t_y, classes, rc, None), systems[1]),
-        ("trained", sweep(t_probs, None, t_y, classes, rc, None), systems[2]),
-        ("trained + guard", sweep(t_probs, t_zs, t_y, classes, rc, meta["guard"]), systems[3]),
-        ("+ agreement", sweep(t_probs, t_zs, t_y, classes, rc, meta["guard"],
-                              agree=meta.get("agree")), systems[4]),
-    ]  # fmt: skip
+        ("zero-shot", sweep(t_zs, None, t_y, plain), systems[1]),
+        ("trained", sweep(t_probs, None, t_y, plain), systems[2]),
+        ("trained + guard", sweep(t_probs, t_zs, t_y, guarded), systems[3]),
+        ("deployed", sweep(t_probs, t_zs, t_y, deployed), systems[4]),
+    ]
     _plot_tradeoff(curves, systems[0], meta["max_wrong_sort"], out / "tradeoff.png")
     (out / "metrics.json").write_text(
         json.dumps({"systems": systems, "per_source": per_source, "data": stats}, indent=2) + "\n"

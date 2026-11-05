@@ -16,7 +16,7 @@ import torch
 from .config import Config
 from .data import SPLITS, load_split, load_train_views
 from .metrics import decisions, operating_point, pick_threshold, sweep, true_compartments
-from .model import ZERO_SHOT_THRESHOLD, Backbone, load_head
+from .model import ZERO_SHOT_THRESHOLD, Backbone, Policy, load_head
 from .train import fit, fit_temperature
 
 
@@ -48,18 +48,16 @@ def crosscheck(cfg: Config, out: Path, log=print) -> dict:
         with torch.no_grad():
             head.temperature.fill_(fit_temperature(head(xv), yv))
         v_probs, v_zs = head.probs(xv).numpy(), zero_shot(xv)
-        threshold = pick_threshold(
-            sweep(v_probs, v_zs, yv.numpy(), classes, rc, cfg.guard, agree=meta["agree"]),
-            meta["max_wrong_sort"],
-        )
+        policy = Policy.from_meta(meta, rc)
+        threshold = pick_threshold(sweep(v_probs, v_zs, yv.numpy(), policy), meta["max_wrong_sort"])
+        policy = policy.with_threshold(threshold)
 
         xt, yt = as_t(split["emb"][held]), split["y"][held]
         t_probs, t_zs = head.probs(xt).numpy(), zero_shot(xt)
         truth = true_compartments(yt, classes, rc)
-        trained = operating_point(
-            decisions(t_probs, t_zs, classes, threshold, rc, cfg.guard, meta["agree"]), truth
-        )
-        zs = operating_point(decisions(t_zs, None, classes, ZERO_SHOT_THRESHOLD, rc, None), truth)
+        trained = operating_point(decisions(t_probs, t_zs, policy), truth)
+        zs_policy = Policy(tuple(classes), rc, ZERO_SHOT_THRESHOLD)
+        zs = operating_point(decisions(t_zs, None, zs_policy), truth)
         trained_classes = set(np.unique(y.numpy()).tolist())
         unseen = [c for i, c in enumerate(classes) if (yt == i).any() and i not in trained_classes]
         results[source] = {

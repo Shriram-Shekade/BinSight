@@ -65,6 +65,8 @@ class Config:
     reject_class: str
     guard: float | None
     agreement: float | None
+    agreement_per_class: dict[str, float]
+    min_confidence_per_class: dict[str, float]
     prompts: dict[str, list[str]]
     data: DataConfig
     train: TrainConfig

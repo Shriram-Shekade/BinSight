@@ -6,27 +6,30 @@ sorting, because one wrong item contaminates a whole compartment: a wrong auto-s
 than an UNSURE.
 
 v1 asked a pretrained model (SigLIP2) to match photos against text prompts. v2 trains its own
-classifier on ~20k public waste photos on top of that model, calibrates it, and picks the UNSURE
+classifier on ~25k public waste photos on top of that model, calibrates it, and picks the UNSURE
 threshold from data to keep wrong sorts under 1%. See **[reports/REPORT.md](reports/REPORT.md)**
 for the measured accuracy against v1.
 
 ## Results
 
-On 3,312 held-out test photos (never used for training, tuning or picking the threshold):
+On 3,945 held-out test photos (never used for training, tuning or picking the threshold):
 
 | | v1 zero-shot | v2 deployed |
 | --- | --- | --- |
-| 5-class accuracy | 82.0% | **99.1%** |
-| Items put in the wrong compartment | 5.6% | **0.4%** |
-| Sortable items sorted into the right compartment | 80.2% | **96.9%** |
-| Wrong sorts on a dataset it never trained on (recycling-dataset) | 4.1% | **2.7%** |
+| 5-class accuracy | 82.5% | **98.7%** |
+| Items put in the wrong compartment | 5.7% | **0.8%** |
+| Sortable items sorted into the right compartment | 78.6% | **95.0%** |
+| Wrong items in the ORGANIC bin | 19.9% | **0** |
+| Wrong sorts on real rubbish photos it never trained on (RealWaste held out) | 7.9% | **3.1%** |
+| Wrong sorts on soft plastics it never trained on (recycling-dataset held out) | 4.1% | **1.8%** |
 | Latency per item (M5, fp16) | ~90 ms (fp32) | ~34 ms |
 
-v2 only auto-sorts when its trained head and the zero-shot prompts agree, unless the head is
-at least 99% sure. Without that rule, a head trained without the recycling-dataset made 12%
-wrong sorts on it (soft plastics it had never seen). Always requiring agreement fixed that
-(2.2%) but sent too much paper to UNSURE; the 99% exception keeps nearly all of the safety and
-sorts 96.9% of sortable items.
+The test set includes real rubbish photographed at a recycling facility (RealWaste), which is
+harder than studio photos, so these numbers are lower than earlier versions of this table.
+
+v2 only auto-sorts when its trained head and the zero-shot prompts agree, unless the head is at
+least 99% sure. ORGANIC is stricter: zero-shot must always agree and the head needs 98%
+confidence, because glass or plastic in food waste can hurt animals.
 
 ![Sorting more vs sorting wrong](reports/tradeoff.png)
 
@@ -62,7 +65,7 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
   the same class, or the head is at least 99% sure (`agreement` in `config.yaml`).
 - **Head**: linear or one-hidden-layer MLP, picked by a small grid on validation macro-F1;
   class-balanced loss; label smoothing; temperature-calibrated softmax.
-- **Data**: three openly licensed Hugging Face datasets (MIT / Apache-2.0), labels mapped to the
+- **Data**: four openly licensed Hugging Face datasets (MIT / Apache-2.0 / CC BY 4.0), labels mapped to the
   five classes in `config.yaml`, near-duplicates merged before splitting so nothing leaks from
   train to test, 70/15/15 stratified split, two augmented views per training image.
 
@@ -145,5 +148,6 @@ It builds on others' work, each under its own license:
 | [omasteam/waste-garbage-management-dataset](https://huggingface.co/datasets/omasteam/waste-garbage-management-dataset) | training and test images | MIT |
 | [garythung/trashnet](https://huggingface.co/datasets/garythung/trashnet) | training and test images | MIT |
 | [viola77data/recycling-dataset](https://huggingface.co/datasets/viola77data/recycling-dataset) | training and test images | Apache-2.0 |
+| [Tatyr2210/waste-classification-vit](https://huggingface.co/datasets/Tatyr2210/waste-classification-vit), which appears to be [RealWaste](https://archive.ics.uci.edu/dataset/908/realwaste) (Single, Iranmanesh & Raad, 2023) | training and test images (real rubbish at a recycling facility) | MIT (upload); RealWaste is CC BY 4.0 |
 
 The datasets are downloaded by `binsight prepare` and are not included in this repository.

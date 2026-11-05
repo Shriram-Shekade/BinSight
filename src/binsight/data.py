@@ -49,7 +49,9 @@ def dhash(image: Image.Image) -> np.ndarray:
 
 
 def load_source(source: str):
-    """The dataset's train split with images left undecoded (decoding happens in workers).
+    """All of a dataset's splits as one, images left undecoded (decoding happens in workers).
+
+    We make our own split, so a dataset's train/validation/test files are simply concatenated.
 
     Reads the Hub's auto-converted Parquet copy: a few large files instead of one request
     per image, which is hours faster for image-folder datasets.
@@ -58,9 +60,9 @@ def load_source(source: str):
     from huggingface_hub import snapshot_download
 
     root = Path(snapshot_download(source, repo_type="dataset", revision=PARQUET_REVISION))
-    files = sorted(str(p) for p in root.glob("*/train/*.parquet"))
+    files = sorted(str(p) for p in root.glob("*/*/*.parquet"))
     if not files:
-        raise FileNotFoundError(f"{source}: no train Parquet files at {PARQUET_REVISION}")
+        raise FileNotFoundError(f"{source}: no Parquet files at {PARQUET_REVISION}")
     ds = datasets.load_dataset("parquet", data_files=files, split="train")
     return ds.cast_column("image", datasets.Image(decode=False))
 
@@ -119,17 +121,39 @@ def _usable_rows(ds, source: str, cfg: Config) -> tuple[np.ndarray, np.ndarray]:
     return rows, y[rows]
 
 
+def _cached(path: Path, backbone_id: str) -> dict[str, np.ndarray] | None:
+    if not path.exists():
+        return None
+    cache = dict(np.load(path))
+    return cache if str(cache["backbone"]) == backbone_id else None
+
+
+def _merge(cache, rows, arrays: dict[str, np.ndarray], row_axis: dict[str, int]):
+    """Add newly embedded rows to a cache, kept sorted by row."""
+    if cache is None:
+        merged = {"rows": rows, **arrays}
+    else:
+        merged = {"rows": np.concatenate([cache["rows"], rows])}
+        for k, a in arrays.items():
+            merged[k] = np.concatenate([cache[k], a], axis=row_axis.get(k, 0))
+    order = np.argsort(merged["rows"])
+    return {k: np.take(v, order, axis=row_axis.get(k, 0)) for k, v in merged.items()}
+
+
 def embed_sources(backbone: Backbone, cfg: Config) -> None:
-    """Stage 1."""
+    """Stage 1: embeds only rows not cached yet, so new datasets or mappings are cheap."""
     cfg.data.dir.mkdir(parents=True, exist_ok=True)
     for source in cfg.data.sources:
         path = cfg.data.dir / f"{slug(source)}.npz"
-        if path.exists() and str(np.load(path)["backbone"]) == backbone.model_id:
-            continue
+        cache = _cached(path, backbone.model_id)
         ds = load_source(source)
-        rows, y = _usable_rows(ds, source, cfg)
-        emb, codes = embed_rows(backbone, ds, rows, cfg, augment=False, desc=source)
-        np.savez(path, rows=rows, y=y, emb=emb, hash=codes, backbone=backbone.model_id)
+        rows, _ = _usable_rows(ds, source, cfg)
+        missing = rows if cache is None else np.setdiff1d(rows, cache["rows"])
+        if not len(missing):
+            continue
+        emb, codes = embed_rows(backbone, ds, missing, cfg, augment=False, desc=source)
+        merged = _merge(cache, missing, {"emb": emb, "hash": codes}, {})
+        np.savez(path, **merged, backbone=backbone.model_id)
 
 
 def _find(parent: np.ndarray, i: int) -> int:
@@ -141,7 +165,19 @@ def _find(parent: np.ndarray, i: int) -> int:
 
 def build_split(cfg: Config, backbone_id: str) -> dict:
     """Stage 2: merge sources, collapse near-duplicates, stratified split. Returns stats."""
-    parts = [np.load(cfg.data.dir / f"{slug(s)}.npz") for s in cfg.data.sources]
+    parts = []
+    for source in cfg.data.sources:
+        # Labels come from the current mapping, not the cache, so mapping edits take effect.
+        rows, labels = _usable_rows(load_source(source), source, cfg)
+        cache = np.load(cfg.data.dir / f"{slug(source)}.npz")
+        keep = np.isin(cache["rows"], rows)
+        lookup = dict(zip(rows.tolist(), labels.tolist(), strict=True))
+        parts.append({
+            "rows": cache["rows"][keep],
+            "y": np.array([lookup[r] for r in cache["rows"][keep].tolist()], dtype=int),
+            "emb": cache["emb"][keep],
+            "hash": cache["hash"][keep],
+        })  # fmt: skip
     src = np.concatenate([np.full(len(p["rows"]), k) for k, p in enumerate(parts)])
     rows = np.concatenate([p["rows"] for p in parts])
     y = np.concatenate([p["y"] for p in parts])
@@ -219,26 +255,25 @@ def build_split(cfg: Config, backbone_id: str) -> dict:
 
 
 def embed_augmented(backbone: Backbone, cfg: Config) -> None:
-    """Stage 3: augmented views of every training image, cached per source."""
+    """Stage 3: augmented views of every training image; only uncached rows are embedded."""
     split = np.load(cfg.data.dir / "split.npz")
     train = split["split"] == SPLITS.index("train")
     for k, source in enumerate(cfg.data.sources):
         rows = np.sort(split["row"][train & (split["src"] == k)])
         path = cfg.data.dir / f"{slug(source)}_aug.npz"
-        if path.exists():
-            cached = np.load(path)
-            if (
-                str(cached["backbone"]) == backbone.model_id
-                and len(cached["emb"]) == cfg.data.augment_views
-                and np.isin(rows, cached["rows"]).all()
-            ):
-                continue
+        cache = _cached(path, backbone.model_id)
+        if cache is not None and len(cache["emb"]) != cfg.data.augment_views:
+            cache = None
+        missing = rows if cache is None else np.setdiff1d(rows, cache["rows"])
+        if not len(missing):
+            continue
         ds = load_source(source)
         views = [
-            embed_rows(backbone, ds, rows, cfg, augment=True, desc=f"{source} aug {v + 1}")[0]
+            embed_rows(backbone, ds, missing, cfg, augment=True, desc=f"{source} aug {v + 1}")[0]
             for v in range(cfg.data.augment_views)
         ]
-        np.savez(path, rows=rows, emb=np.stack(views), backbone=backbone.model_id)
+        merged = _merge(cache, missing, {"emb": np.stack(views)}, {"emb": 1})
+        np.savez(path, **merged, backbone=backbone.model_id)
 
 
 def prepare(backbone: Backbone, cfg: Config) -> dict:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 import numpy as np
@@ -131,30 +131,59 @@ def load_head(path: Path) -> tuple[Head, dict]:
     return head.eval(), meta
 
 
-def route(
-    probs: np.ndarray,
-    zero_shot: np.ndarray | None,
-    classes: list[str],
-    threshold: float,
-    reject_class: str,
-    guard: float | None,
-    agree: float | None = None,
-) -> tuple[str, str]:
+@dataclass(frozen=True)
+class Policy:
+    """Everything that decides between a compartment and UNSURE."""
+
+    classes: tuple[str, ...]
+    reject_class: str
+    threshold: float
+    # Zero-shot 'other' probability at or above which the item goes to UNSURE.
+    guard: float | None = None
+    # Per class: head confidence from which zero-shot may disagree (1.0 = must always agree).
+    agree: dict[str, float] | None = None
+    # Per class: confidence bar stricter than `threshold`, for compartments where one wrong
+    # item does the most harm.
+    min_confidence: dict[str, float] = field(default_factory=dict)
+
+    def with_threshold(self, threshold: float) -> Policy:
+        return replace(self, threshold=threshold)
+
+    @classmethod
+    def from_meta(cls, meta: dict, reject_class: str) -> Policy:
+        return cls(
+            tuple(meta["classes"]),
+            reject_class,
+            meta["threshold"],
+            meta.get("guard"),
+            meta.get("agree"),
+            meta.get("min_confidence") or {},
+        )
+
+
+def route(probs: np.ndarray, zero_shot: np.ndarray | None, policy: Policy) -> tuple[str, str]:
     """Pick the compartment and, for UNSURE, the reason. Anything doubtful goes to UNSURE.
 
-    `agree`: unless the head is at least this confident, zero-shot must pick the same class.
+    The zero-shot checks are skipped when `zero_shot` is None (zero-shot is the decider).
     """
+    classes = policy.classes
     i = int(np.argmax(probs))
     top, confidence = classes[i], float(probs[i])
-    if top == reject_class:
+    if top == policy.reject_class:
         return UNSURE, f"top class is '{top}'"
-    if confidence < threshold:
-        return UNSURE, f"confidence {confidence:.2f} < {threshold:.2f}"
-    if guard is not None and zero_shot is not None:
-        other = float(zero_shot[classes.index(reject_class)])
-        if other >= guard:
-            return UNSURE, f"zero-shot guard: '{reject_class}' {other:.2f}"
-    if agree is not None and zero_shot is not None and confidence < agree:
+    if confidence < policy.threshold:
+        return UNSURE, f"confidence {confidence:.2f} < {policy.threshold:.2f}"
+    bar = policy.min_confidence.get(top)
+    if bar is not None and confidence < bar:
+        return UNSURE, f"confidence {confidence:.2f} < {bar:.2f} needed for {top}"
+    if zero_shot is None:
+        return top.upper(), ""
+    if policy.guard is not None:
+        other = float(zero_shot[classes.index(policy.reject_class)])
+        if other >= policy.guard:
+            return UNSURE, f"zero-shot guard: '{policy.reject_class}' {other:.2f}"
+    limit = (policy.agree or {}).get(top)
+    if limit is not None and confidence < limit:
         second = classes[int(np.argmax(zero_shot))]
         if second != top:
             return UNSURE, f"zero-shot disagrees: '{second}'"
@@ -195,13 +224,13 @@ class Classifier:
         elif use_head:
             self.note = f"no trained head at {cfg.head}; using zero-shot"
         self.mode = "trained" if self.head else "zero-shot"
-        self.guard = cfg.guard if self.head else None
-        agree = self.meta.get("agree")
-        self.agree = None if agree is None else float(agree)
-        if cfg.threshold != "auto":
-            self.threshold = float(cfg.threshold)
+        if self.head:
+            self.policy = Policy.from_meta(self.meta, cfg.reject_class)
         else:
-            self.threshold = self.meta.get("threshold", ZERO_SHOT_THRESHOLD)
+            self.policy = Policy(tuple(self.classes), cfg.reject_class, ZERO_SHOT_THRESHOLD)
+        if cfg.threshold != "auto":
+            self.policy = self.policy.with_threshold(float(cfg.threshold))
+        self.threshold = self.policy.threshold
         self._warmup()
 
     def zero_shot_probs(self, embeds: torch.Tensor) -> torch.Tensor:
@@ -217,19 +246,13 @@ class Classifier:
         self.backbone.embed_images([Image.new("RGB", (256, 256))])
 
     def classify(self, image: Image.Image, threshold: float | None = None) -> Result:
-        threshold = self.threshold if threshold is None else threshold
+        policy = self.policy if threshold is None else self.policy.with_threshold(threshold)
         start = time.perf_counter()
         probs, zero_shot = self.probs(self.backbone.embed_images([image]))
         latency = (time.perf_counter() - start) * 1000
-        compartment, reason = route(
-            probs[0],
-            zero_shot[0],
-            self.classes,
-            threshold,
-            self.cfg.reject_class,
-            self.guard,
-            self.agree,
-        )
+        # In zero-shot mode the zero-shot scores are the decision, not a second opinion.
+        second = zero_shot[0] if self.head else None
+        compartment, reason = route(probs[0], second, policy)
         scores = dict(zip(self.classes, probs[0].tolist(), strict=True))
         top = max(scores, key=scores.__getitem__)
         return Result(scores, top, scores[top], compartment, reason, latency)

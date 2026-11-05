@@ -5,7 +5,7 @@ from __future__ import annotations
 import numpy as np
 
 from .config import UNSURE
-from .model import route
+from .model import Policy, route
 
 
 def confusion(y: np.ndarray, pred: np.ndarray, n: int) -> np.ndarray:
@@ -37,23 +37,10 @@ def ece(probs: np.ndarray, y: np.ndarray, bins: int = 15) -> float:
     return float(total)
 
 
-def decisions(
-    probs: np.ndarray,
-    zero_shot: np.ndarray | None,
-    classes: list[str],
-    threshold: float,
-    reject_class: str,
-    guard: float | None,
-    agree: float | None = None,
-) -> np.ndarray:
+def decisions(probs: np.ndarray, zero_shot: np.ndarray | None, policy: Policy) -> np.ndarray:
     """Compartment chosen for every row, through the same `route` the live demo uses."""
     zs = zero_shot if zero_shot is not None else [None] * len(probs)
-    return np.array(
-        [
-            route(p, z, classes, threshold, reject_class, guard, agree)[0]
-            for p, z in zip(probs, zs, strict=True)
-        ]
-    )
+    return np.array([route(p, z, policy)[0] for p, z in zip(probs, zs, strict=True)])
 
 
 def true_compartments(y: np.ndarray, classes: list[str], reject_class: str) -> np.ndarray:
@@ -75,13 +62,13 @@ def operating_point(chosen: np.ndarray, truth: np.ndarray) -> dict[str, float]:
     }
 
 
-def sweep(probs, zero_shot, y, classes, reject_class, guard, grid=None, agree=None) -> list[dict]:
-    """Operating point at each threshold."""
+def sweep(probs, zero_shot, y, policy: Policy, grid=None) -> list[dict]:
+    """Operating point at each threshold, everything else in the policy fixed."""
     grid = np.round(np.arange(0.30, 0.995, 0.01), 2) if grid is None else grid
-    truth = true_compartments(y, classes, reject_class)
+    truth = true_compartments(y, list(policy.classes), policy.reject_class)
     out = []
     for t in grid:
-        chosen = decisions(probs, zero_shot, classes, float(t), reject_class, guard, agree)
+        chosen = decisions(probs, zero_shot, policy.with_threshold(float(t)))
         out.append({"threshold": float(t), **operating_point(chosen, truth)})
     return out
 

@@ -14,7 +14,7 @@ import torch.nn.functional as F
 from .config import Config
 from .data import SPLITS, load_split, load_train_views
 from .metrics import macro_f1, pick_threshold, sweep
-from .model import Backbone, Head, save_head
+from .model import Backbone, Head, Policy, save_head
 
 
 def _arrays(cfg: Config):
@@ -102,10 +102,12 @@ def train(cfg: Config, log=print) -> dict:
     text = backbone.class_text_embeds(cfg.prompts, cfg.prompt_template)
     zero_shot = (backbone.scale * xv @ text.T).softmax(-1).numpy()
     probs = head.probs(xv).numpy()
-    points = sweep(
-        probs, zero_shot, yv.numpy(), cfg.classes, cfg.reject_class, cfg.guard,
-        agree=cfg.agreement,
-    )  # fmt: skip
+    agree = None
+    if cfg.agreement is not None:
+        agree = {c: cfg.agreement_per_class.get(c, cfg.agreement) for c in cfg.classes}
+    policy = Policy(tuple(cfg.classes), cfg.reject_class, 0.0, cfg.guard, agree,
+                    dict(cfg.min_confidence_per_class))  # fmt: skip
+    points = sweep(probs, zero_shot, yv.numpy(), policy)
     threshold = pick_threshold(points, tc.max_wrong_sort)
     chosen = next(p for p in points if p["threshold"] == threshold)
     log(
@@ -121,7 +123,9 @@ def train(cfg: Config, log=print) -> dict:
         "temperature": t,
         "threshold": threshold,
         "guard": cfg.guard,
-        "agree": cfg.agreement,
+        "agree": agree,
+        "agreement": cfg.agreement,
+        "min_confidence": dict(cfg.min_confidence_per_class),
         "max_wrong_sort": tc.max_wrong_sort,
         "val_operating_point": chosen,
         "val_macro_f1": best["val_macro_f1"],
