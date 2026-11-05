@@ -79,6 +79,20 @@ def evaluate(
 
 
 @app.command()
+def crosscheck(
+    config: Path | None = ConfigOpt,
+    out: Path = typer.Option(Path("reports"), "--out", help="Report folder."),
+) -> None:
+    """Harder test: train without each dataset in turn and test on the one left out."""
+    from .crosscheck import crosscheck as run
+
+    run(load_config(config), out, log=typer.echo)
+    typer.echo(
+        f"wrote {out / 'crosscheck.json'} (re-run `binsight evaluate` to add it to the report)"
+    )
+
+
+@app.command()
 def live(
     model: str | None = ModelOpt,
     config: Path | None = ConfigOpt,

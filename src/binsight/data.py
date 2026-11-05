@@ -256,9 +256,11 @@ def load_split(cfg: Config) -> dict[str, np.ndarray]:
     return dict(np.load(path))
 
 
-def load_train_views(cfg: Config, split: dict[str, np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
-    """Augmented training embeddings and their labels, matched back to split rows."""
-    embs, labels = [], []
+def load_train_views(
+    cfg: Config, split: dict[str, np.ndarray]
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Augmented training embeddings, their labels and source index, matched to split rows."""
+    embs, labels, srcs = [], [], []
     train = split["split"] == SPLITS.index("train")
     for k, source in enumerate(cfg.data.sources):
         path: Path = cfg.data.dir / f"{slug(source)}_aug.npz"
@@ -271,6 +273,8 @@ def load_train_views(cfg: Config, split: dict[str, np.ndarray]) -> tuple[np.ndar
         for view in aug["emb"]:
             embs.append(view[idx])
             labels.append(split["y"][mine])
+            srcs.append(np.full(len(idx), k))
     if not embs:
-        return np.zeros((0, split["emb"].shape[1]), np.float16), np.zeros(0, int)
-    return np.concatenate(embs), np.concatenate(labels)
+        empty = np.zeros(0, int)
+        return np.zeros((0, split["emb"].shape[1]), np.float16), empty, empty
+    return np.concatenate(embs), np.concatenate(labels), np.concatenate(srcs)
