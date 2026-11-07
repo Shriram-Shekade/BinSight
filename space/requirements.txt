@@ -1,0 +1,6 @@
+# CPU-only PyTorch: the free Space hardware has no GPU, and these wheels are much smaller.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1
+torchvision==0.29.1
+transformers==5.21.0
+binsight @ git+https://github.com/Shriram-Shekade/BinSight@v2

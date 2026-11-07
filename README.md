@@ -140,6 +140,29 @@ of the square once the item is down.
 
 The hint under the tray shows how much of it differs from the background; near 0% means empty.
 
+## Browser demo
+
+[`space/`](space) is a small web app (Gradio) for trying BinSight from any browser or phone:
+take or upload a photo of one item and it shows the compartment and, for UNSURE, why. It uses
+the same classifier and rules as `binsight classify` (one photo, so no frame vote or second look).
+
+```bash
+uv run --group demo python space/app.py   # then open http://localhost:7860
+```
+
+To put it online for free as a [Hugging Face Space](https://huggingface.co/spaces):
+
+1. Sign in at huggingface.co, click **New Space**, pick SDK **Gradio** and hardware
+   **CPU basic (free)**.
+2. In the Space's **Files** tab, upload everything inside `space/`: `app.py`,
+   `requirements.txt`, `README.md` and the `examples` folder.
+3. The first build takes about 10 minutes (it downloads the 4 GB SigLIP2 model). After that the
+   Space link works for anyone, at roughly a second per photo.
+
+The Space installs this repository at tag `v2`, which includes the trained head. To deploy a
+newer version, move the tag or change `space/requirements.txt`. Free Spaces sleep after two days
+without visits; the next visit wakes them in a few minutes, so open the link before showing it.
+
 ## Configuration
 
 Everything is in [`config.yaml`](config.yaml): backbone, head path, prompts, threshold, guard,

@@ -7,7 +7,8 @@ from pathlib import Path
 
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PACKAGE_DIR = Path(__file__).resolve().parent
+PROJECT_ROOT = PACKAGE_DIR.parents[1]
 UNSURE = "UNSURE"
 
 
@@ -104,14 +105,13 @@ class Config:
 
 
 def load_config(path: Path | None = None) -> Config:
-    """Read `path`, else ./config.yaml, else the project's config.yaml.
+    """Read `path`, else ./config.yaml, else the project's, else the copy bundled in the wheel.
 
     Relative paths inside it (head, data dir) resolve against the config file's folder.
     """
     if path is None:
-        path = Path("config.yaml")
-        if not path.exists():
-            path = PROJECT_ROOT / "config.yaml"
+        found = [Path("config.yaml"), PROJECT_ROOT / "config.yaml", PACKAGE_DIR / "config.yaml"]
+        path = next((p for p in found if p.exists()), found[1])
     base = path.resolve().parent
     raw = yaml.safe_load(path.read_text())
     data = raw.pop("data")
