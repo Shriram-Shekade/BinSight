@@ -62,7 +62,7 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
 ```
 
 - **Backbone**: `google/siglip2-so400m-patch16-256`, frozen. Only the head's weights are
-  trained. With about 25k images, a frozen strong encoder generalises better than fine-tuning
+  trained. With about 26k images, a frozen strong encoder generalises better than fine-tuning
   400M parameters, and it keeps the zero-shot prompts working as a guard for things the datasets
   have no pictures of (hands, faces, an empty tray).
 - **Second opinion**: zero-shot must pick the same class when the item might be glass or
