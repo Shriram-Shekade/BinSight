@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import math
 import time
+from collections import deque
 from dataclasses import dataclass
 from datetime import datetime
 
 import cv2
 import numpy as np
+import torch
 from PIL import Image
 
-from .config import UNSURE, Config, TriggerConfig, hex_to_bgr
+from .config import UNSURE, Config, TrayCheckConfig, TriggerConfig, hex_to_bgr
 from .model import Classifier, Result
 
 WINDOW = "BinSight"
@@ -21,12 +24,13 @@ FLASH_SECONDS = 0.6
 DESIGN_WIDTH = 960  # layout is designed at this width and scaled by display_width
 
 # Trigger states
-CAPTURING, ARMED, SETTLING, HELD = "capturing", "armed", "settling", "held"
+CAPTURING, ARMED, SETTLING, HELD, TURN = "capturing", "armed", "settling", "held", "turn"
 STATE_TEXT = {
     CAPTURING: "Grabbing background - keep tray empty",
     ARMED: "Armed - place an item on the tray",
     SETTLING: "Hold still...",
     HELD: "Decided - remove the item",
+    TURN: "Not sure - turn the item, then hold still",
 }
 
 
@@ -50,6 +54,13 @@ class Trigger:
         self._clear = 0
         self._gone = 0
 
+    def await_turn(self) -> None:
+        """Wait for the item to be turned (some movement), then fire again once it is still."""
+        self.state = TURN
+        self._moved = 0
+        self._still = 0
+        self._clear = 0
+
     def hold(self) -> None:
         """Mark the current item as decided (after a manual SPACE too)."""
         self.state = HELD
@@ -59,12 +70,18 @@ class Trigger:
 
     @staticmethod
     def _prep(roi: np.ndarray) -> np.ndarray:
-        grey = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-        grey = cv2.GaussianBlur(
-            cv2.resize(grey, (GRID, GRID), interpolation=cv2.INTER_AREA), (5, 5), 0
-        )
-        grey = grey.astype(np.float32)
-        return grey - grey.mean()  # cancels global exposure drift
+        """Small blurred colour image. Colour, not grey: an orange item on a beige tray has
+        almost the same grey level and would go unnoticed."""
+        small = cv2.resize(roi, (GRID, GRID), interpolation=cv2.INTER_AREA)
+        small = cv2.GaussianBlur(small, (5, 5), 0).astype(np.float32)
+        # Subtracting the median cancels global exposure / white-balance drift; unlike the mean,
+        # it is not pulled around by an item covering less than half the tray.
+        return small - np.median(small, axis=(0, 1))
+
+    @staticmethod
+    def _diff(a: np.ndarray, b: np.ndarray, level: float) -> float:
+        """Share of pixels where any colour channel changed by more than `level`."""
+        return float((np.abs(a - b).max(axis=2) > level).mean())
 
     def update(self, roi: np.ndarray) -> bool:
         """Feed one ROI frame; True when it is time to classify."""
@@ -81,7 +98,7 @@ class Trigger:
             return False
 
         assert self._bg is not None
-        changed = self.changed = float((np.abs(cur - self._bg) > cfg.diff_level).mean())
+        changed = self.changed = self._diff(cur, self._bg, cfg.diff_level)
         fire = False
 
         if self.state == ARMED:
@@ -93,7 +110,19 @@ class Trigger:
             if changed < cfg.clear_fraction:
                 self.state = ARMED
             else:
-                moved = float((np.abs(cur - self._prev) > cfg.motion_level).mean())
+                moved = self._diff(cur, self._prev, cfg.motion_level)
+                self._still = self._still + 1 if moved < cfg.still_fraction else 0
+                if self._still >= cfg.still_frames:
+                    self.hold()
+                    fire = True
+        elif self.state == TURN:
+            self._clear = self._clear + 1 if changed < cfg.clear_fraction else 0
+            moved = self._diff(cur, self._prev, cfg.motion_level)
+            if self._clear >= cfg.clear_frames:
+                self.state = ARMED  # item taken away instead of turned
+            elif self._moved < cfg.turn_frames:
+                self._moved += moved >= cfg.still_fraction
+            else:
                 self._still = self._still + 1 if moved < cfg.still_fraction else 0
                 if self._still >= cfg.still_frames:
                     self.hold()
@@ -106,16 +135,38 @@ class Trigger:
                 # Lighting shifted so the empty tray no longer matches the background: if the
                 # scene differs from how it looked with the item and has stopped moving, the
                 # item is gone, so take a fresh background instead of staying stuck.
-                moved = float((np.abs(cur - self._prev) > cfg.motion_level).mean())
-                gone = (
-                    float((np.abs(cur - self._ref) > cfg.diff_level).mean()) > cfg.occupied_fraction
-                )
+                moved = self._diff(cur, self._prev, cfg.motion_level)
+                gone = self._diff(cur, self._ref, cfg.diff_level) > cfg.occupied_fraction
                 self._gone = self._gone + 1 if gone and moved < cfg.still_fraction else 0
                 if self._gone >= cfg.rearm_still_frames:
                     self.begin_background(cfg.rearm_skip_frames)
 
         self._prev = cur
         return fire
+
+
+def tray_check(roi: np.ndarray, cfg: TrayCheckConfig) -> list[str]:
+    """Tips about the empty tray: the model was trained on plain, evenly lit photos."""
+    grey = cv2.cvtColor(
+        cv2.resize(roi, (256, 256), interpolation=cv2.INTER_AREA), cv2.COLOR_BGR2GRAY
+    )
+    tips = []
+    if grey.mean() < cfg.min_brightness:
+        tips.append("Too dark - add light")
+    if (cv2.Canny(grey, 60, 160) > 0).mean() > cfg.max_edges:
+        tips.append("Busy background - use a plain sheet")
+    if cv2.GaussianBlur(grey, (0, 0), 25).std() > cfg.max_unevenness:
+        tips.append("Uneven light or shadow on the tray")
+    return tips
+
+
+@dataclass
+class Pending:
+    """A doubtful first look, kept while the user turns the item for a second one."""
+
+    embeds: torch.Tensor
+    result: Result
+    deadline: float
 
 
 @dataclass
@@ -165,30 +216,76 @@ class LiveApp:
         self.result: Result | None = None
         self.anim: Animation | None = None
         self.landed_at = 0.0
+        self.recent: deque[np.ndarray] = deque(maxlen=max(cfg.vote_frames, 1))  # memory only
+        self.pending: Pending | None = None
+        self.tips: list[str] | None = None  # tray check after the last background grab
+        self.tips_at = 0.0
 
     # --- decisions ---------------------------------------------------------
 
-    def decide(self, raw: np.ndarray) -> None:
-        """Classify the unmirrored ROI crop at native camera resolution."""
+    def crop(self, raw: np.ndarray) -> np.ndarray:
+        """The unmirrored ROI at native camera resolution, as RGB."""
         k = raw.shape[1] / self.w
         x0, y0, x1, y1 = (int(v * k) for v in self.roi)
-        crop = cv2.cvtColor(raw[y0:y1, x0:x1], cv2.COLOR_BGR2RGB)
-        res = self.clf.classify(Image.fromarray(crop), self.threshold)
+        return cv2.cvtColor(raw[y0:y1, x0:x1], cv2.COLOR_BGR2RGB)
+
+    def decide(self, now: float | None = None) -> None:
+        """Classify the item from the last few frames, averaged into one decision.
+
+        A doubtful UNSURE (low confidence or models disagreeing, not "this has no bin") gets
+        one second look: the user turns the item and both looks are combined.
+        """
+        now = time.monotonic() if now is None else now
+        start = time.perf_counter()
+        embeds = self.clf.embed([Image.fromarray(f) for f in self.recent])
+        if self.pending is not None:
+            embeds = torch.cat([self.pending.embeds, embeds])
+        res = self.clf.decide(embeds, self.threshold, (time.perf_counter() - start) * 1000)
+        retryable = res.compartment == UNSURE and not res.reason.startswith("top class")
+        if self.pending is None and retryable and self.cfg.retry_seconds > 0:
+            self.pending = Pending(embeds, res, now + self.cfg.retry_seconds)
+            self.result = res
+            self.trigger.await_turn()
+            self.log(res, "first look, asking to turn the item")
+            return
+        self.finalize(res, now)
+
+    def finalize(self, res: Result, now: float) -> None:
+        self.pending = None
         self.result = res
         self.counts[res.compartment] += 1
         rx0, ry0, rx1, ry1 = self.roi
-        self.anim = Animation(
-            time.monotonic(), ((rx0 + rx1) // 2, (ry0 + ry1) // 2), res.compartment
-        )
+        self.anim = Animation(now, ((rx0 + rx1) // 2, (ry0 + ry1) // 2), res.compartment)
         self.trigger.hold()
+        self.log(res)
 
+    def log(self, res: Result, note: str = "") -> None:
         top3 = "  ".join(f"{n} {p:.2f}" for n, p in res.ranked()[:3])
-        note = f"  ({res.reason})" if res.reason else ""
+        why = f"  ({res.reason})" if res.reason else ""
+        extra = f"  [{note}]" if note else ""
         print(
             f"{datetime.now():%H:%M:%S}  {res.compartment:<8} {res.top} {res.confidence:.2f}  "
-            f"{res.latency_ms:.0f} ms  | {top3}{note}",
+            f"{res.latency_ms:.0f} ms, {res.views} frames  | {top3}{why}{extra}",
             flush=True,
         )
+
+    def tick(self, raw: np.ndarray, frame: np.ndarray, now: float) -> None:
+        """Per-frame logic, separate from camera and window so it can be tested headless."""
+        x0, y0, x1, y1 = self.roi
+        self.recent.append(self.crop(raw))
+        was = self.trigger.state
+        fire = self.trigger.update(frame[y0:y1, x0:x1])
+        if was == CAPTURING and self.trigger.state == ARMED:
+            self.tips, self.tips_at = tray_check(frame[y0:y1, x0:x1], self.cfg.tray_check), now
+            print("tray check: " + ("; ".join(self.tips) or "OK"), flush=True)
+        if self.pending is not None:
+            if self.trigger.state == ARMED:  # item taken away instead of turned
+                self.finalize(self.pending.result, now)
+                self.trigger.state = ARMED
+            elif now > self.pending.deadline and not fire:
+                self.finalize(self.pending.result, now)
+        if fire:
+            self.decide(now)
 
     def set_threshold(self, value: float) -> None:
         self.threshold = round(min(max(value, 0.05), 0.95), 2)
@@ -223,7 +320,7 @@ class LiveApp:
         put(img, hint, ((x0 + x1 - size[0]) // 2, y1 + int(24 * self.s)), 0.6 * self.s, hint_color)
 
     def draw_tiles(self, img, now: float) -> None:
-        active = self.result.compartment if self.result else None
+        active = self.result.compartment if self.result and not self.pending else None
         since = now - self.landed_at
         for name, (x0, y0, x1, y1) in self.tiles().items():
             colour = self.colours[name]
@@ -260,8 +357,8 @@ class LiveApp:
             return
         s, colour = self.s, self.colours[res.compartment]
         x0, y0, w = int(12 * s), int(12 * s), int(300 * s)
-        shade(img, (x0, y0), (x0 + w, y0 + int(212 * s)), alpha=0.65)
-        cv2.rectangle(img, (x0, y0), (x0 + int(6 * s), y0 + int(212 * s)), colour, -1)
+        shade(img, (x0, y0), (x0 + w, y0 + int(232 * s)), alpha=0.65)
+        cv2.rectangle(img, (x0, y0), (x0 + int(6 * s), y0 + int(232 * s)), colour, -1)
         tx = x0 + int(18 * s)
 
         put(img, res.compartment, (tx, y0 + int(38 * s)), 1.1 * s, colour, 2)
@@ -273,11 +370,12 @@ class LiveApp:
         cv2.rectangle(img, (bar_x0, bar_y), (fill, bar_y + bar_h), colour, -1)
         tick = bar_x0 + int((bar_x1 - bar_x0) * self.threshold)
         cv2.line(img, (tick, bar_y - 4), (tick, bar_y + bar_h + 4), (255, 255, 255), 2)
-        put(img, f"{res.latency_ms:.0f} ms", (tx, y0 + int(112 * s)), 0.55 * s, (200, 200, 200))
+        info = f"{res.latency_ms:.0f} ms, {res.views} frame{'s' if res.views != 1 else ''}"
+        put(img, info, (tx, y0 + int(112 * s)), 0.55 * s, (200, 200, 200))
         if res.reason:
-            put(img, res.reason, (tx + int(70 * s), y0 + int(112 * s)), 0.5 * s, (0, 160, 255))
+            put(img, res.reason[:44], (tx, y0 + int(134 * s)), 0.45 * s, (0, 160, 255))
         for i, (name, p) in enumerate(res.ranked()[:3]):
-            y = y0 + int((142 + i * 24) * s)
+            y = y0 + int((162 + i * 24) * s)
             put(img, f"{i + 1}. {name}", (tx, y), 0.55 * s)
             put(img, f"{p:.2f}", (tx + int(190 * s), y), 0.55 * s)
 
@@ -317,10 +415,30 @@ class LiveApp:
         put(panel, "+/- threshold   Q quit", (x, int(526 * s)), 0.42 * s, (150, 150, 150))
         return panel
 
+    def draw_prompts(self, img, now: float) -> None:
+        """Second-look banner and tray-check tips."""
+        s = self.s
+        if self.pending is not None:
+            left = max(0, math.ceil(self.pending.deadline - now))
+            text = f"Turn it, hold still ({left}s)"
+            size = cv2.getTextSize(text, FONT, 0.65 * s, 2)[0]
+            x = (self.roi[0] + self.roi[2] - size[0]) // 2
+            y = self.roi[1] + int(34 * s)
+            shade(img, (x - 10, y - size[1] - 10), (x + size[0] + 10, y + 10), alpha=0.75)
+            put(img, text, (x, y), 0.65 * s, (0, 200, 255), 2)
+        if self.tips is None or (not self.tips and now - self.tips_at > 6):
+            return
+        x, y = self.roi[2] + int(14 * s), int(30 * s)
+        put(img, "TRAY CHECK", (x, y), 0.5 * s, (200, 200, 200))
+        for i, tip in enumerate(self.tips or ["OK"]):
+            colour = (0, 200, 255) if self.tips else (90, 200, 90)
+            put(img, tip, (x, y + int((22 + 20 * i) * s)), 0.45 * s, colour)
+
     def render(self, frame: np.ndarray, now: float) -> np.ndarray:
         view = cv2.flip(frame, 1)  # mirrored for display only
         self.draw_roi(view)
         self.draw_card(view)
+        self.draw_prompts(view, now)
         self.draw_tiles(view, now)
         self.draw_animation(view, now)
         return np.hstack([view, self.render_panel(view.shape[0])])
@@ -337,7 +455,6 @@ class LiveApp:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
         cv2.namedWindow(WINDOW, cv2.WINDOW_AUTOSIZE)
-        x0, y0, x1, y1 = self.roi
         step = self.cfg.threshold_step
         try:
             while True:
@@ -347,15 +464,14 @@ class LiveApp:
                 raw = crop_16_9(raw)
                 frame = cv2.resize(raw, (self.w, self.h), interpolation=cv2.INTER_AREA)
 
-                if self.trigger.update(frame[y0:y1, x0:x1]):
-                    self.decide(raw)
-
-                cv2.imshow(WINDOW, self.render(frame, time.monotonic()))
+                now = time.monotonic()
+                self.tick(raw, frame, now)
+                cv2.imshow(WINDOW, self.render(frame, now))
                 key = cv2.waitKey(1) & 0xFF
                 if key in (ord("q"), ord("Q"), 27):
                     break
                 if key == ord(" "):
-                    self.decide(raw)
+                    self.decide(time.monotonic())
                 elif key in (ord("b"), ord("B")):
                     self.trigger.begin_background(0)
                     print("re-capturing background", flush=True)

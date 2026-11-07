@@ -14,31 +14,35 @@ for the measured accuracy against v1.
 
 On 3,945 held-out test photos (never used for training, tuning or picking the threshold):
 
-| | v1 zero-shot | v2 deployed |
+| | Zero-shot only (v1 approach) | v2 deployed |
 | --- | --- | --- |
-| 5-class accuracy | 82.5% | **98.7%** |
-| Items put in the wrong compartment | 5.7% | **0.8%** |
-| Sortable items sorted into the right compartment | 78.6% | **95.0%** |
-| Wrong items in the ORGANIC bin | 19.9% | **0** |
-| Wrong sorts on real rubbish photos it never trained on (RealWaste held out) | 7.9% | **3.1%** |
-| Wrong sorts on soft plastics it never trained on (recycling-dataset held out) | 4.1% | **1.8%** |
-| Latency per item (M5, fp16) | ~90 ms (fp32) | ~34 ms |
+| 6-class accuracy | 88.6% | **99.1%** |
+| Items put in the wrong compartment | 2.9% | **0.43%** |
+| Sortable items sorted into the right compartment | 75.2% | **93.7%** |
+| Wrong items in the ORGANIC bin | 14.3% | **0%** |
+| Wrong items in the PLASTIC bin | 11.3% | **2.1%** |
+| Wrong sorts on real rubbish it never trained on (RealWaste held out) | 5.7% | **2.5%** |
+| Wrong sorts on soft plastics it never trained on (recycling-dataset held out) | 2.3% | **2.0%** |
+| Time per decision (M5, fp16) | ~34 ms (1 frame) | ~135 ms (5-frame vote) |
 
-The test set includes real rubbish photographed at a recycling facility (RealWaste), which is
-harder than studio photos, so these numbers are lower than earlier versions of this table.
+The zero-shot column uses v2's prompts, which give glass its own class; v1 itself (glass lumped
+into "other") made 5.7% wrong sorts on the previous version of this test set. The test set includes real rubbish
+photographed at a recycling facility (RealWaste), which is harder than studio photos.
 
-v2 only auto-sorts when its trained head and the zero-shot prompts agree, unless the head is at
-least 99% sure. ORGANIC is stricter: zero-shot must always agree and the head needs 98%
-confidence, because glass or plastic in food waste can hurt animals.
+Glass has its own class (it still goes to UNSURE: there is no glass compartment), so the model
+learns the glass-vs-clear-plastic boundary instead of lumping glass in with clothes and shoes.
+A second opinion from the zero-shot prompts is required when an item might be glass or organic,
+or the model is under 95% sure. ORGANIC is the strictest bin: the second opinion always applies
+and the model needs 98% confidence, because glass or plastic in food waste can hurt animals.
 
 ![Sorting more vs sorting wrong](reports/tradeoff.png)
 
 These are web photos, so expect lower numbers from a real webcam; the full write-up and its
 limitations are in [reports/REPORT.md](reports/REPORT.md).
 
-Why the guard matters: on a photo of an open hand, the trained head alone says *organic, 0.73*,
-because the training data has no hands, and that is above the threshold. The zero-shot guard
-scores it *other, 0.99* and it goes to UNSURE instead.
+Why the guard matters: on a photo of an open hand, an early trained head alone said *organic,
+0.73*, because the training data has no hands. The zero-shot guard scored it as out of scope
+(0.99) and it went to UNSURE instead.
 
 ## How it works
 
@@ -48,25 +52,26 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
                          ┌─────────────────────────────────────────┤
                          ▼                                         ▼
               trained head (this repo)                 zero-shot prompts (v1)
-              plastic/paper/metal/organic/other        "is it a hand, a face, ...?"
+              plastic/paper/metal/organic/glass/other  "is it a hand, a face, ...?"
                          │                                         │
                          └──────────► route ◄──────────────────────┘
-               UNSURE if top class is "other", confidence < threshold,
-               the zero-shot guard says "other", or the two disagree
-               (and the head is under 99% sure);
-               otherwise that compartment
+               UNSURE if the top class has no bin (glass, other), confidence is
+               too low, the zero-shot guard says glass/other, or a needed second
+               opinion disagrees; otherwise that compartment
 ```
 
 - **Backbone**: `google/siglip2-so400m-patch16-256`, frozen. Only the head's weights are
-  trained. With about 20k images, a frozen strong encoder generalises better than fine-tuning
+  trained. With about 25k images, a frozen strong encoder generalises better than fine-tuning
   400M parameters, and it keeps the zero-shot prompts working as a guard for things the datasets
   have no pictures of (hands, faces, an empty tray).
-- **Agreement**: an item is auto-sorted only if the trained head and the zero-shot prompts pick
-  the same class, or the head is at least 99% sure (`agreement` in `config.yaml`).
+- **Second opinion**: zero-shot must pick the same class when the item might be glass or
+  organic, or the head is under 95% sure (`double_check` in `config.yaml`). Checking only
+  glass/organic sorted a little more but quadrupled wrong sorts on unseen datasets
+  (`scripts/rule_ab.py`).
 - **Head**: linear or one-hidden-layer MLP, picked by a small grid on validation macro-F1;
   class-balanced loss; label smoothing; temperature-calibrated softmax.
 - **Data**: four openly licensed Hugging Face datasets (MIT / Apache-2.0 / CC BY 4.0), labels mapped to the
-  five classes in `config.yaml`, near-duplicates merged before splitting so nothing leaks from
+  six classes in `config.yaml`, near-duplicates merged before splitting so nothing leaks from
   train to test, 70/15/15 stratified split, two augmented views per training image.
 
 ## Setup
@@ -110,10 +115,21 @@ trained on a different backbone is ignored), `--config <path>`. `live` also take
 ### `binsight live`
 
 Hold an item inside the white square (the tray). With the tray empty at start, the app grabs a
-background; when the square differs from it and the item stays still for about 10 frames, it
-classifies once, shows the result, slides a block to the chosen compartment, and re-arms when you
-take the item away. The display is mirrored; the classified crop is not, so label text stays
-readable. Nothing is written to disk. Each decision is also printed in the terminal.
+background and checks the tray (tips appear top right if it is too dark, too busy or unevenly
+lit). When the square differs from the background and the item stays still for about 10 frames,
+it averages the last 5 frames into one decision, shows the result, slides a block to the chosen
+compartment, and re-arms when you take the item away.
+
+If it is unsure because the model is not confident or the two models disagree, it asks you to
+**turn the item and hold it still** (6 seconds) and decides again from both looks. Items that
+clearly have no bin (glass, clothes, batteries) go straight to UNSURE.
+
+The display is mirrored; the classified crop is not, so label text stays readable. Frames are
+kept in memory only; nothing is written to disk. Each decision is also printed in the terminal.
+
+**Tray setup matters more than any setting**: the model learned from plain, evenly lit photos.
+Use a plain light sheet or board, light it evenly without hard shadows, and take your hand out
+of the square once the item is down.
 
 | Key | Action |
 | --- | --- |
@@ -127,7 +143,9 @@ The hint under the tray shows how much of it differs from the background; near 0
 ## Configuration
 
 Everything is in [`config.yaml`](config.yaml): backbone, head path, prompts, threshold, guard,
-dataset label mapping, split and training settings, ROI size, trigger sensitivity and colours.
+second-opinion rule, per-compartment confidence bars, dataset label mapping, split and training
+settings, ROI size, trigger sensitivity, frame vote and second look, tray-check limits and
+colours.
 
 ## Development
 

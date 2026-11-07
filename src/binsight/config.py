@@ -25,6 +25,14 @@ class TriggerConfig:
     adapt_rate: float
     rearm_still_frames: int
     rearm_skip_frames: int
+    turn_frames: int
+
+
+@dataclass
+class TrayCheckConfig:
+    min_brightness: float
+    max_edges: float
+    max_unevenness: float
 
 
 @dataclass
@@ -53,6 +61,13 @@ class TrainConfig:
 
 
 @dataclass
+class DoubleCheck:
+    always: list[str]
+    suspect: dict[str, float]
+    below: float | None
+
+
+@dataclass
 class Config:
     model: str
     fallback_model: str
@@ -62,10 +77,9 @@ class Config:
     prompt_template: str
     threshold: float | str
     threshold_step: float
-    reject_class: str
+    unsure_classes: list[str]
     guard: float | None
-    agreement: float | None
-    agreement_per_class: dict[str, float]
+    double_check: DoubleCheck | None
     min_confidence_per_class: dict[str, float]
     prompts: dict[str, list[str]]
     data: DataConfig
@@ -74,6 +88,9 @@ class Config:
     roi_fraction: float
     display_width: int
     trigger: TriggerConfig
+    vote_frames: int
+    retry_seconds: float
+    tray_check: TrayCheckConfig
     colours: dict[str, str]
 
     @property
@@ -82,7 +99,7 @@ class Config:
 
     @property
     def compartments(self) -> list[str]:
-        sortable = [c.upper() for c in self.prompts if c != self.reject_class]
+        sortable = [c.upper() for c in self.prompts if c not in self.unsure_classes]
         return [*sortable, UNSURE]
 
 
@@ -99,8 +116,11 @@ def load_config(path: Path | None = None) -> Config:
     raw = yaml.safe_load(path.read_text())
     data = raw.pop("data")
     data["dir"] = base / data["dir"]
+    check = raw.pop("double_check")
     return Config(
+        double_check=DoubleCheck(**check) if check else None,
         trigger=TriggerConfig(**raw.pop("trigger")),
+        tray_check=TrayCheckConfig(**raw.pop("tray_check")),
         data=DataConfig(**data),
         train=TrainConfig(**raw.pop("train")),
         head=base / raw.pop("head"),

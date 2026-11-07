@@ -97,16 +97,22 @@ def train(cfg: Config, log=print) -> dict:
     after = F.cross_entropy(logits / t, yv).item()
     log(f"temperature {t:.3f}: val NLL {before:.4f} -> {after:.4f}")
 
-    # Threshold for the deployed system: head + zero-shot guard (+ agreement), routed as live.
+    # Threshold for the deployed system: head + zero-shot guard + second opinion, as live.
     backbone = Backbone(arrays["backbone"], cfg.device, cfg.dtype)
     text = backbone.class_text_embeds(cfg.prompts, cfg.prompt_template)
     zero_shot = (backbone.scale * xv @ text.T).softmax(-1).numpy()
     probs = head.probs(xv).numpy()
-    agree = None
-    if cfg.agreement is not None:
-        agree = {c: cfg.agreement_per_class.get(c, cfg.agreement) for c in cfg.classes}
-    policy = Policy(tuple(cfg.classes), cfg.reject_class, 0.0, cfg.guard, agree,
-                    dict(cfg.min_confidence_per_class))  # fmt: skip
+    check = cfg.double_check
+    policy = Policy(
+        tuple(cfg.classes),
+        tuple(cfg.unsure_classes),
+        0.0,
+        cfg.guard,
+        dict(cfg.min_confidence_per_class),
+        tuple(check.always) if check else (),
+        dict(check.suspect) if check else {},
+        check.below if check else None,
+    )
     points = sweep(probs, zero_shot, yv.numpy(), policy)
     threshold = pick_threshold(points, tc.max_wrong_sort)
     chosen = next(p for p in points if p["threshold"] == threshold)
@@ -123,8 +129,13 @@ def train(cfg: Config, log=print) -> dict:
         "temperature": t,
         "threshold": threshold,
         "guard": cfg.guard,
-        "agree": agree,
-        "agreement": cfg.agreement,
+        "double_check": None
+        if check is None
+        else {
+            "always": list(check.always),
+            "suspect": dict(check.suspect),
+            "below": check.below,
+        },
         "min_confidence": dict(cfg.min_confidence_per_class),
         "max_wrong_sort": tc.max_wrong_sort,
         "val_operating_point": chosen,

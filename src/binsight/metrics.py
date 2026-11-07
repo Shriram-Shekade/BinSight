@@ -43,8 +43,8 @@ def decisions(probs: np.ndarray, zero_shot: np.ndarray | None, policy: Policy) -
     return np.array([route(p, z, policy)[0] for p, z in zip(probs, zs, strict=True)])
 
 
-def true_compartments(y: np.ndarray, classes: list[str], reject_class: str) -> np.ndarray:
-    names = np.array([UNSURE if c == reject_class else c.upper() for c in classes])
+def true_compartments(y: np.ndarray, classes: list[str], unsure) -> np.ndarray:
+    names = np.array([UNSURE if c in unsure else c.upper() for c in classes])
     return names[y]
 
 
@@ -65,7 +65,7 @@ def operating_point(chosen: np.ndarray, truth: np.ndarray) -> dict[str, float]:
 def sweep(probs, zero_shot, y, policy: Policy, grid=None) -> list[dict]:
     """Operating point at each threshold, everything else in the policy fixed."""
     grid = np.round(np.arange(0.30, 0.995, 0.01), 2) if grid is None else grid
-    truth = true_compartments(y, list(policy.classes), policy.reject_class)
+    truth = true_compartments(y, list(policy.classes), policy.unsure)
     out = []
     for t in grid:
         chosen = decisions(probs, zero_shot, policy.with_threshold(float(t)))

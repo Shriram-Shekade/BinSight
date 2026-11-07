@@ -31,7 +31,7 @@ BLUES = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d3
 
 def _system(name, probs, zero_shot, y, policy: Policy, logits_raw=None):
     classes = list(policy.classes)
-    truth = true_compartments(y, classes, policy.reject_class)
+    truth = true_compartments(y, classes, policy.unsure)
     chosen = decisions(probs, zero_shot, policy)
     pred = probs.argmax(1)
     cm = confusion(y, pred, len(classes))
@@ -45,7 +45,7 @@ def _system(name, probs, zero_shot, y, policy: Policy, logits_raw=None):
         "name": name,
         "threshold": policy.threshold,
         "guard": policy.guard,
-        "agree": policy.agree,
+        "check_below": policy.check_below,
         "min_confidence": policy.min_confidence,
         "accuracy": float(correct.mean()),
         "accuracy_ci": bootstrap_ci(correct),
@@ -126,7 +126,7 @@ def _plot_tradeoff(
         [reference["sortable_recall"] * 100],
         s=72, facecolor=SURFACE, edgecolor=SERIES[0], linewidth=2, zorder=4,
         label=(
-            f"v1 as shipped: {reference['sortable_recall']:.0%} sorted right, "
+            f"zero-shot at 0.60 (v1 setting): {reference['sortable_recall']:.0%} sorted right, "
             f"{reference['wrong_sort_rate']:.1%} wrong (threshold {reference['threshold']:.2f})"
         ),
     )  # fmt: skip
@@ -161,7 +161,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
     zs_v1, zs_tuned, head, guarded, deployed = systems
     classes = cfg.classes
     head_kind = "linear" if meta["hidden"] == 0 else f"MLP, {meta['hidden']} hidden"
-    other = deployed["per_class"]["support"][classes.index(cfg.reject_class)]
+    other = sum(deployed["per_class"]["support"][classes.index(c)] for c in cfg.unsure_classes)
     sortable_share = 1 - other / n_test
     lines = [
         "# BinSight accuracy report",
@@ -172,12 +172,13 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "",
         "## Summary",
         "",
-        f"- **Deployed system** (trained head + zero-shot guard + agreement, threshold "
+        f"- **Deployed system** (trained head + zero-shot guard + second opinion, threshold "
         f"{deployed['threshold']:.2f}): puts **{_pct(deployed['wrong_sort_rate'])}** of items in "
         f"the wrong compartment (95% CI {_ci(deployed['wrong_sort_ci'])}) and sorts "
         f"**{_pct(deployed['sortable_recall'])}** of the items that belong in a compartment into "
         "the right one; everything else goes to UNSURE.",
-        f"- **v1 zero-shot** at its 0.60 threshold: {_pct(zs_v1['wrong_sort_rate'])} wrong sorts "
+        "- **Zero-shot only** (the v1 approach, with v2's prompts) at 0.60: "
+        f"{_pct(zs_v1['wrong_sort_rate'])} wrong sorts "
         f"(CI {_ci(zs_v1['wrong_sort_ci'])}), {_pct(zs_v1['sortable_recall'])} of sortable items "
         "sorted right.",
         f"- 5-class accuracy: trained **{_pct(head['accuracy'])}** "
@@ -203,13 +204,14 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         )
     lines += [
         "",
-        "Accuracy and macro-F1 use the top class over all five classes (no UNSURE). Wrong sorts, "
-        "auto-sorted and UNSURE are shares of all test items after routing; an out-of-scope item "
-        "('other') auto-sorted into any compartment counts as a wrong sort. 'Sortable sorted "
+        f"Accuracy and macro-F1 use the top class over all {len(classes)} classes (no UNSURE). "
+        "Wrong sorts, auto-sorted and UNSURE are shares of all test items after routing; an item "
+        f"with no compartment ({' or '.join(cfg.unsure_classes)}) auto-sorted into any "
+        "compartment counts as a wrong sort. 'Sortable sorted "
         "right' is the share of plastic/paper/metal/organic items that reached the right "
         f"compartment; auto-sorted can be at most {_pct(sortable_share)} "
-        "here because the rest of the test set is 'other'. ECE is expected "
-        "calibration error of the confidence (lower is better).",
+        f"here because the rest of the test set is {' or '.join(cfg.unsure_classes)}. "
+        "ECE is expected calibration error of the confidence (lower is better).",
         "",
         "![Coverage vs wrong sorts](tradeoff.png)",
         "",
@@ -228,7 +230,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "",
         "Compartment contamination (share of auto-sorted items that do not belong there):",
         "",
-        "| Compartment | v1 zero-shot | Deployed |",
+        "| Compartment | Zero-shot only | Deployed |",
         "| --- | --- | --- |",
     ]
     for comp, v in deployed["contamination"].items():
@@ -239,7 +241,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "",
         "## Per source dataset (5-class accuracy)",
         "",
-        "| Source | Test images | v1 zero-shot | Trained |",
+        "| Source | Test images | Zero-shot only | Trained |",
         "| --- | --- | --- | --- |",
     ]
     for source, v in per_source.items():
@@ -254,7 +256,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
             "closer to a new webcam on a new campus. Same recipe and settings as deployed.",
             "",
             "| Held-out dataset | Images | Trained accuracy | Trained wrong sorts | "
-            "v1 zero-shot accuracy | v1 wrong sorts |",
+            "zero-shot accuracy | zero-shot wrong sorts |",
             "| --- | --- | --- | --- | --- | --- |",
         ]
         for source, r in cross.items():
@@ -278,11 +280,14 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
             "recycling-dataset mistook soft plastics (bags, wrappers) and hard plastic containers "
             "for paper or 'other', confidently: 12.0% wrong sorts on it. Zero-shot SigLIP2 knows "
             "what a wrapper is. Requiring the trained head and zero-shot to agree cut that to "
-            "2.2% but sent much of the paper to UNSURE, so agreement is waived when the head is "
-            f"at least {meta['agreement']:.0%} sure (2.7%). Both choices were made on validation "
-            "data and this unseen-dataset test, never on the main test set. On the main test "
-            f"set now: sortable items sorted right {_pct(guarded['sortable_recall'])} without "
-            f"these rules, {_pct(deployed['sortable_recall'])} with them.",
+            "2.2% but sent much of the paper to UNSURE. The deployed rule asks for the second "
+            "opinion only when the item might be glass or organic, or the head is under "
+            f"{((meta.get('double_check') or {}).get('below') or 0):.0%} sure. Checking only "
+            "possible glass/organic would sort a little more but quadrupled wrong sorts on unseen "
+            "datasets, so the confidence condition stays (comparison in `scripts/rule_ab.py`, "
+            "chosen on validation and these unseen-dataset folds). On the main test set: "
+            f"sortable items sorted right {_pct(guarded['sortable_recall'])} without a second "
+            f"opinion, {_pct(deployed['sortable_recall'])} with it.",
             "",
             "## Organic safety",
             "",
@@ -349,11 +354,12 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "macro-F1 kept) is trained on those embeddings with class-balanced cross-entropy.",
         "3. A softmax temperature is fitted on validation.",
         "4. The zero-shot prompts from v1 still run on the same embedding as a guard: if they say "
-        f"'other' with probability >= {cfg.guard}, the item goes to UNSURE. This covers things "
+        f"{' or '.join(cfg.unsure_classes)} with probability >= {cfg.guard}, the item goes to "
+        "UNSURE. This covers things "
         "the datasets have no pictures of (hands, faces, an empty tray, phones).",
-        "5. Agreement: the item is auto-sorted only if the trained head and the zero-shot "
-        f"prompts pick the same class, or the head is at least {meta.get('agreement') or 0:.0%} "
-        "sure; for organic, agreement is always required and the head needs a higher "
+        "5. Second opinion: when the item might be glass or organic, or the head is under "
+        f"{((meta.get('double_check') or {}).get('below') or 0):.0%} sure, it is auto-sorted only "
+        "if the zero-shot prompts pick the same class; organic also needs higher head "
         "confidence (see the unseen-source test and organic safety).",
         "6. The UNSURE threshold is the lowest one meeting the wrong-sort target on validation.",
         "",
@@ -379,10 +385,15 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "different, so expect lower accuracy live; the threshold can be raised with `+`.",
         "- De-duplication removes copies, not different photos of the same object; such "
         "near-twins can still sit on both sides of the split and flatter these numbers.",
-        "- 'other' in the data is glass, batteries, clothes and shoes only. Hands, faces, phones "
-        "and an empty tray rely on the zero-shot guard, which this test set does not measure.",
+        "- 'other' in the data is batteries, clothes, shoes and textiles only. Hands, faces, "
+        "phones and an empty tray rely on the zero-shot guard, which this test set does not "
+        "measure.",
         "- Class mapping is a policy choice (e.g. cardboard is paper, soft plastics are plastic, "
         "glass is UNSURE because the bin has no glass compartment).",
+        "- Some photos labelled glass in the datasets look like clear PET plastic (screw-thread "
+        "bottles, a disposable champagne flute). Part of the measured 'glass in PLASTIC' wrong "
+        "sorts is likely label noise, and clear glass and clear plastic can look identical in a "
+        "photo: a real bin would add a cheap physical check (weight, or the sound of a tap).",
         "",
     ]
     return "\n".join(lines)
@@ -411,7 +422,7 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
     t_mask, t_probs, t_zs, t_raw, t_y = scores("test")
     log(f"evaluating on {len(t_y)} test images")
 
-    rc = cfg.reject_class
+    rc = tuple(cfg.unsure_classes)
     target = meta["max_wrong_sort"]
     deployed = Policy.from_meta(meta, rc)
     plain = Policy(tuple(classes), rc, ZERO_SHOT_THRESHOLD)
@@ -424,11 +435,11 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
     head_tuned = tuned(plain, v_probs, None)
     guard_tuned = tuned(guarded, v_probs, v_zs)
     systems = [
-        _system("v1 zero-shot", t_zs, None, t_y, plain),
+        _system("zero-shot only", t_zs, None, t_y, plain),
         _system("zero-shot, tuned threshold", t_zs, None, t_y, zs_tuned),
         _system("trained head", t_probs, None, t_y, head_tuned, t_raw),
         _system("trained + guard", t_probs, t_zs, t_y, guard_tuned),
-        _system("trained + guard + agreement (deployed)", t_probs, t_zs, t_y, deployed),
+        _system("trained + guard + second opinion (deployed)", t_probs, t_zs, t_y, deployed),
     ]
     for s in systems:
         log(

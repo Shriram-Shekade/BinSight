@@ -17,17 +17,18 @@ prompt_template: "This is a photo of {}."
 # (0.6 in zero-shot mode). A number overrides it.
 threshold: auto
 threshold_step: 0.05    # change per +/- keypress in the live window
-reject_class: other     # top class that always routes to UNSURE
+unsure_classes: [glass, other]   # classes with no compartment: always routed to UNSURE
 # Zero-shot guard for things the training data has no examples of (hands, faces, empty
 # tray, phones): UNSURE if the zero-shot "other" score is at least this. null disables it.
 guard: 0.5
-# Auto-sort only when the trained head and the zero-shot prompts pick the same class, unless
-# the head is at least this sure. Guards against confident mistakes on unfamiliar photos
-# (see reports/REPORT.md, "Photos from an unseen source"). 1.0 = always require, null = off.
-agreement: 0.99
-# Stricter for compartments where one wrong item does the most harm.
-agreement_per_class:
-  organic: 1.0          # always require agreement: glass or plastic in food waste can hurt animals
+# Second opinion: zero-shot must pick the same class before auto-sorting when the item might
+# be glass or organic (where one wrong item does the most harm) or the head is not sure.
+# Chosen with scripts/rule_ab.py: compared with checking everything under 99%, it sorts ~1.5 pts
+# more at the same wrong-sort rate, for slightly more risk on unfamiliar photos.
+double_check:
+  always: [organic]       # head's top class is one of these
+  suspect: {glass: 0.02}  # head gives glass at least this probability
+  below: 0.95             # head's confidence is under this
 # Confidence the trained head needs before an item may go in these compartments, on top of
 # the threshold. Set as a safety policy after glass ornaments shaped like beans reached ORGANIC
 # on the test set (see reports/REPORT.md).
@@ -41,8 +42,10 @@ prompts:
   paper: [newspaper, cardboard box, sheet of paper, paper bag]
   metal: [aluminium soda can, tin can, aluminium foil, metal bottle cap]
   organic: [banana peel, apple core, food scraps, vegetable peels]
+  # Glass has no compartment (it goes to UNSURE), but as its own class the model must learn
+  # the glass-vs-clear-plastic boundary instead of lumping glass in with clothes and shoes.
+  glass: [glass bottle, glass jar, drinking glass, broken glass]
   other:
-    - glass bottle
     - battery
     - phone
     - a human hand
@@ -67,7 +70,7 @@ data:
       biological: organic
       cardboard: paper
       clothes: other
-      glass: other
+      glass: glass
       metal: metal
       paper: paper
       plastic: plastic
@@ -75,7 +78,7 @@ data:
       trash: null           # mixed non-recyclables; overlaps wrappers we call plastic
     garythung/trashnet:                          # MIT, ~5k images
       cardboard: paper
-      glass: other
+      glass: glass
       metal: metal
       paper: paper
       plastic: plastic
@@ -85,7 +88,7 @@ data:
       batteries: other
       cardboard: paper
       disposable plates: null   # paper, plastic or foam
-      glass: other
+      glass: glass
       hard plastic: plastic
       paper: paper
       paper towel: null         # used tissue: not recyclable paper, not food
@@ -95,7 +98,7 @@ data:
     Tatyr2210/waste-classification-vit:          # MIT upload; appears to be RealWaste (CC BY 4.0)
       Cardboard: paper                           # real rubbish photographed at a recycling facility
       Food Organics: organic
-      Glass: other
+      Glass: glass
       Metal: metal
       Miscellaneous Trash: null
       Paper: paper
@@ -135,6 +138,16 @@ trigger:
   adapt_rate: 0.02        # how fast the empty-tray background follows lighting drift
   rearm_still_frames: 45  # item gone but tray never matched background: still this long -> new background
   rearm_skip_frames: 10   # frames skipped before that new background grab
+  turn_frames: 3          # moving frames that count as "turned the item" for a second look
+
+vote_frames: 5            # still frames averaged into one decision (fewer glare/blur mistakes)
+retry_seconds: 6          # after a doubtful UNSURE, time allowed to turn the item for a second look
+
+# Checked on the empty tray after each background grab; shown as tips in the window.
+tray_check:
+  min_brightness: 70      # mean grey level (0-255) below this: too dark
+  max_edges: 0.05         # share of edge pixels above this: busy background
+  max_unevenness: 30      # grey-level spread of the blurred tray above this: shadows / uneven light
 
 # Compartment colours (hex RGB).
 colours:

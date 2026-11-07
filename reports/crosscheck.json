@@ -7,24 +7,25 @@
       "paper": 3305,
       "metal": 1009,
       "organic": 992,
-      "other": 11198
+      "glass": 2975,
+      "other": 8223
     },
-    "threshold": 0.72,
+    "threshold": 0.65,
     "trained": {
-      "accuracy": 0.9132206705428463,
-      "coverage": 0.31081888822474596,
-      "wrong_sort_rate": 0.014617181981198718,
-      "unsure_rate": 0.689181111775254,
-      "sortable_recall": 0.756557945870923,
-      "precision_of_sorts": 0.952972027972028
+      "accuracy": 0.9583220127153181,
+      "coverage": 0.3017986197902516,
+      "wrong_sort_rate": 0.00728142150736293,
+      "unsure_rate": 0.6982013802097484,
+      "sortable_recall": 0.7522553782095767,
+      "precision_of_sorts": 0.9758732445084624
     },
     "zero_shot": {
-      "accuracy": 0.8141607346628267,
-      "coverage": 0.35896321251969787,
-      "wrong_sort_rate": 0.05461066130522198,
-      "unsure_rate": 0.6410367874803021,
-      "sortable_recall": 0.7773768216516308,
-      "precision_of_sorts": 0.8478655767484106
+      "accuracy": 0.8962125740368418,
+      "coverage": 0.31739390316796173,
+      "wrong_sort_rate": 0.023148399717437373,
+      "unsure_rate": 0.6826060968320382,
+      "sortable_recall": 0.7515614156835531,
+      "precision_of_sorts": 0.9270672829994864
     }
   },
   "garythung/trashnet": {
@@ -35,24 +36,25 @@
       "paper": 675,
       "metal": 329,
       "organic": 0,
-      "other": 459
+      "glass": 459,
+      "other": 0
     },
     "threshold": 0.3,
     "trained": {
       "accuracy": 0.9841008771929824,
-      "coverage": 0.7379385964912281,
-      "wrong_sort_rate": 0.008771929824561403,
-      "unsure_rate": 0.26206140350877194,
-      "sortable_recall": 0.9743589743589743,
-      "precision_of_sorts": 0.9881129271916791
+      "coverage": 0.7258771929824561,
+      "wrong_sort_rate": 0.006578947368421052,
+      "unsure_rate": 0.2741228070175439,
+      "sortable_recall": 0.9611721611721612,
+      "precision_of_sorts": 0.9909365558912386
     },
     "zero_shot": {
-      "accuracy": 0.881578947368421,
-      "coverage": 0.7412280701754386,
-      "wrong_sort_rate": 0.04111842105263158,
-      "unsure_rate": 0.25877192982456143,
-      "sortable_recall": 0.9355311355311355,
-      "precision_of_sorts": 0.9445266272189349
+      "accuracy": 0.9583333333333334,
+      "coverage": 0.6935307017543859,
+      "wrong_sort_rate": 0.01206140350877193,
+      "unsure_rate": 0.30646929824561403,
+      "sortable_recall": 0.9106227106227106,
+      "precision_of_sorts": 0.9826086956521739
     }
   },
   "viola77data/recycling-dataset": {
@@ -63,24 +65,25 @@
       "paper": 499,
       "metal": 260,
       "organic": 0,
-      "other": 565
+      "glass": 286,
+      "other": 279
     },
     "threshold": 0.3,
     "trained": {
-      "accuracy": 0.8284632034632035,
-      "coverage": 0.533008658008658,
-      "wrong_sort_rate": 0.017857142857142856,
-      "unsure_rate": 0.466991341991342,
-      "sortable_recall": 0.7420109119251753,
-      "precision_of_sorts": 0.966497461928934
+      "accuracy": 0.8430735930735931,
+      "coverage": 0.5335497835497836,
+      "wrong_sort_rate": 0.02002164502164502,
+      "unsure_rate": 0.46645021645021645,
+      "sortable_recall": 0.7396726422447389,
+      "precision_of_sorts": 0.962474645030426
     },
     "zero_shot": {
-      "accuracy": 0.8793290043290043,
-      "coverage": 0.6374458874458875,
-      "wrong_sort_rate": 0.04112554112554113,
-      "unsure_rate": 0.3625541125541126,
-      "sortable_recall": 0.8589243959469992,
-      "precision_of_sorts": 0.935483870967742
+      "accuracy": 0.8760822510822511,
+      "coverage": 0.564935064935065,
+      "wrong_sort_rate": 0.022727272727272728,
+      "unsure_rate": 0.43506493506493504,
+      "sortable_recall": 0.7809820732657833,
+      "precision_of_sorts": 0.9597701149425287
     }
   },
   "Tatyr2210/waste-classification-vit": {
@@ -91,24 +94,25 @@
       "paper": 959,
       "metal": 789,
       "organic": 824,
-      "other": 732
+      "glass": 416,
+      "other": 316
     },
     "threshold": 0.3,
     "trained": {
-      "accuracy": 0.888284023668639,
-      "coverage": 0.6695857988165681,
-      "wrong_sort_rate": 0.030532544378698224,
-      "unsure_rate": 0.33041420118343195,
-      "sortable_recall": 0.7729745204695104,
-      "precision_of_sorts": 0.9544008483563097
+      "accuracy": 0.8968047337278107,
+      "coverage": 0.6594082840236687,
+      "wrong_sort_rate": 0.02485207100591716,
+      "unsure_rate": 0.34059171597633137,
+      "sortable_recall": 0.7675350701402806,
+      "precision_of_sorts": 0.9623115577889447
     },
     "zero_shot": {
-      "accuracy": 0.7981065088757396,
-      "coverage": 0.7100591715976331,
-      "wrong_sort_rate": 0.07881656804733728,
-      "unsure_rate": 0.28994082840236685,
-      "sortable_recall": 0.7635270541082164,
-      "precision_of_sorts": 0.889
+      "accuracy": 0.8165680473372781,
+      "coverage": 0.6622485207100591,
+      "wrong_sort_rate": 0.05727810650887574,
+      "unsure_rate": 0.3377514792899408,
+      "sortable_recall": 0.7317492127111366,
+      "precision_of_sorts": 0.9135096497498213
     }
   }
 }

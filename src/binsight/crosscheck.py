@@ -27,7 +27,7 @@ def crosscheck(cfg: Config, out: Path, log=print) -> dict:
     backbone = Backbone(meta["backbone"], cfg.device, cfg.dtype)
     text = backbone.class_text_embeds(cfg.prompts, cfg.prompt_template)
     best = max(meta["grid"], key=lambda r: r["val_macro_f1"])
-    classes, rc, n = cfg.classes, cfg.reject_class, len(cfg.classes)
+    classes, rc, n = cfg.classes, tuple(cfg.unsure_classes), len(cfg.classes)
     as_t = lambda a: torch.from_numpy(np.asarray(a, np.float32))  # noqa: E731
 
     def zero_shot(x):

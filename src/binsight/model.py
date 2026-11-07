@@ -136,29 +136,42 @@ class Policy:
     """Everything that decides between a compartment and UNSURE."""
 
     classes: tuple[str, ...]
-    reject_class: str
+    unsure: tuple[str, ...]  # classes with no compartment
     threshold: float
-    # Zero-shot 'other' probability at or above which the item goes to UNSURE.
+    # Zero-shot probability of the `unsure` classes at or above which the item goes to UNSURE.
     guard: float | None = None
-    # Per class: head confidence from which zero-shot may disagree (1.0 = must always agree).
-    agree: dict[str, float] | None = None
     # Per class: confidence bar stricter than `threshold`, for compartments where one wrong
     # item does the most harm.
     min_confidence: dict[str, float] = field(default_factory=dict)
+    # Second opinion: zero-shot must agree when the head's top class is in `check_always`,
+    # gives a `check_suspect` class at least that probability, or is under `check_below` sure.
+    check_always: tuple[str, ...] = ()
+    check_suspect: dict[str, float] = field(default_factory=dict)
+    check_below: float | None = None
 
     def with_threshold(self, threshold: float) -> Policy:
         return replace(self, threshold=threshold)
 
     @classmethod
-    def from_meta(cls, meta: dict, reject_class: str) -> Policy:
+    def from_meta(cls, meta: dict, unsure: list[str]) -> Policy:
+        check = meta.get("double_check") or {}
         return cls(
             tuple(meta["classes"]),
-            reject_class,
+            tuple(unsure),
             meta["threshold"],
             meta.get("guard"),
-            meta.get("agree"),
             meta.get("min_confidence") or {},
+            tuple(check.get("always", ())),
+            check.get("suspect") or {},
+            check.get("below"),
         )
+
+    def needs_second_opinion(self, probs: np.ndarray, top: str, confidence: float) -> bool:
+        if top in self.check_always:
+            return True
+        if any(probs[self.classes.index(c)] >= p for c, p in self.check_suspect.items()):
+            return True
+        return self.check_below is not None and confidence < self.check_below
 
 
 def route(probs: np.ndarray, zero_shot: np.ndarray | None, policy: Policy) -> tuple[str, str]:
@@ -169,7 +182,7 @@ def route(probs: np.ndarray, zero_shot: np.ndarray | None, policy: Policy) -> tu
     classes = policy.classes
     i = int(np.argmax(probs))
     top, confidence = classes[i], float(probs[i])
-    if top == policy.reject_class:
+    if top in policy.unsure:
         return UNSURE, f"top class is '{top}'"
     if confidence < policy.threshold:
         return UNSURE, f"confidence {confidence:.2f} < {policy.threshold:.2f}"
@@ -179,11 +192,10 @@ def route(probs: np.ndarray, zero_shot: np.ndarray | None, policy: Policy) -> tu
     if zero_shot is None:
         return top.upper(), ""
     if policy.guard is not None:
-        other = float(zero_shot[classes.index(policy.reject_class)])
-        if other >= policy.guard:
-            return UNSURE, f"zero-shot guard: '{policy.reject_class}' {other:.2f}"
-    limit = (policy.agree or {}).get(top)
-    if limit is not None and confidence < limit:
+        out = float(sum(zero_shot[classes.index(c)] for c in policy.unsure))
+        if out >= policy.guard:
+            return UNSURE, f"zero-shot guard: {'/'.join(policy.unsure)} {out:.2f}"
+    if policy.needs_second_opinion(probs, top, confidence):
         second = classes[int(np.argmax(zero_shot))]
         if second != top:
             return UNSURE, f"zero-shot disagrees: '{second}'"
@@ -198,6 +210,7 @@ class Result:
     compartment: str
     reason: str  # why it went to UNSURE; empty otherwise
     latency_ms: float
+    views: int = 1  # camera frames averaged into this decision
 
     def ranked(self) -> list[tuple[str, float]]:
         return sorted(self.scores.items(), key=lambda kv: kv[1], reverse=True)
@@ -225,9 +238,11 @@ class Classifier:
             self.note = f"no trained head at {cfg.head}; using zero-shot"
         self.mode = "trained" if self.head else "zero-shot"
         if self.head:
-            self.policy = Policy.from_meta(self.meta, cfg.reject_class)
+            self.policy = Policy.from_meta(self.meta, cfg.unsure_classes)
         else:
-            self.policy = Policy(tuple(self.classes), cfg.reject_class, ZERO_SHOT_THRESHOLD)
+            self.policy = Policy(
+                tuple(self.classes), tuple(cfg.unsure_classes), ZERO_SHOT_THRESHOLD
+            )
         if cfg.threshold != "auto":
             self.policy = self.policy.with_threshold(float(cfg.threshold))
         self.threshold = self.policy.threshold
@@ -243,16 +258,30 @@ class Classifier:
         return main.numpy(), zero_shot.numpy()
 
     def _warmup(self) -> None:
-        self.backbone.embed_images([Image.new("RGB", (256, 256))])
+        # The GPU compiles each batch size once; do it now for single images and the live vote.
+        blank = Image.new("RGB", (256, 256))
+        for n in sorted({1, max(self.cfg.vote_frames, 1)}):
+            self.backbone.embed_images([blank] * n)
+
+    def embed(self, images: list[Image.Image]) -> torch.Tensor:
+        """Unit-length embeddings, one per image (frames of the same item are averaged later)."""
+        return self.backbone.embed_images(images)
 
     def classify(self, image: Image.Image, threshold: float | None = None) -> Result:
-        policy = self.policy if threshold is None else self.policy.with_threshold(threshold)
         start = time.perf_counter()
-        probs, zero_shot = self.probs(self.backbone.embed_images([image]))
-        latency = (time.perf_counter() - start) * 1000
+        embeds = self.embed([image])
+        return self.decide(embeds, threshold, (time.perf_counter() - start) * 1000)
+
+    def decide(
+        self, embeds: torch.Tensor, threshold: float | None = None, latency_ms: float = 0.0
+    ) -> Result:
+        """Route one item from one or more embeddings of it (e.g. several camera frames)."""
+        policy = self.policy if threshold is None else self.policy.with_threshold(threshold)
+        mean = F.normalize(embeds.mean(dim=0, keepdim=True), dim=-1)
+        probs, zero_shot = self.probs(mean)
         # In zero-shot mode the zero-shot scores are the decision, not a second opinion.
         second = zero_shot[0] if self.head else None
         compartment, reason = route(probs[0], second, policy)
         scores = dict(zip(self.classes, probs[0].tolist(), strict=True))
         top = max(scores, key=scores.__getitem__)
-        return Result(scores, top, scores[top], compartment, reason, latency)
+        return Result(scores, top, scores[top], compartment, reason, latency_ms, len(embeds))
