@@ -19,7 +19,7 @@ threshold: auto
 threshold_step: 0.05    # change per +/- keypress in the live window
 unsure_classes: [glass, other]   # classes with no compartment: always routed to UNSURE
 # Zero-shot guard for things the training data has no examples of (hands, faces, empty
-# tray, phones): UNSURE if the zero-shot "other" score is at least this. null disables it.
+# tray, phones): UNSURE if the zero-shot glass + other score is at least this. null disables it.
 guard: 0.5
 # Second opinion: zero-shot must pick the same class before auto-sorting when the item might
 # be glass or organic (where one wrong item does the most harm) or the head is not sure.
@@ -124,7 +124,7 @@ roi_fraction: 0.6       # tray square side as a fraction of the frame height
 display_width: 960      # window video width in px (16:9)
 
 # Auto-trigger: ROI is compared with a background grabbed while the tray is empty.
-# Fractions are of ROI pixels that changed by more than the level (0-255 grey).
+# Fractions are of ROI pixels where any colour channel changed by more than the level (0-255).
 trigger:
   diff_level: 25          # pixel change that counts as "different from background"
   motion_level: 20        # pixel change between frames that counts as "moving"

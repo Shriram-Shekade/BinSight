@@ -90,7 +90,7 @@ HOW = f"""
 - A frozen open-source image model,
   [SigLIP2](https://huggingface.co/google/siglip2-so400m-patch16-256), turns the photo into
   1,152 numbers.
-- A small classifier trained on about 25,000 public waste photos reads those numbers and picks
+- A small classifier trained on about 26,000 public waste photos reads those numbers and picks
   plastic, paper, metal, organic, glass or other.
 - A second opinion (the image model matching the photo against text descriptions) has to agree
   when the item might be glass or food, or the classifier is under 95% sure.

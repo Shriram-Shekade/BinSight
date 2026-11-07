@@ -18,7 +18,7 @@ from .model import Classifier, Result
 
 WINDOW = "BinSight"
 FONT = cv2.FONT_HERSHEY_SIMPLEX
-GRID = 96  # ROI is shrunk to GRID x GRID grey for change detection
+GRID = 96  # ROI is shrunk to GRID x GRID (colour) for change detection
 ANIM_SECONDS = 0.7
 FLASH_SECONDS = 0.6
 DESIGN_WIDTH = 960  # layout is designed at this width and scaled by display_width

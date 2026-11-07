@@ -6,9 +6,10 @@ sorting, because one wrong item contaminates a whole compartment: a wrong auto-s
 than an UNSURE.
 
 v1 asked a pretrained model (SigLIP2) to match photos against text prompts. v2 trains its own
-classifier on ~25k public waste photos on top of that model, calibrates it, and picks the UNSURE
+classifier on ~26k public waste photos on top of that model, calibrates it, and picks the UNSURE
 threshold from data to keep wrong sorts under 1%. See **[reports/REPORT.md](reports/REPORT.md)**
-for the measured accuracy against v1.
+for the measured accuracy against v1, and **[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md)** for a
+plain-language tour of how the code works.
 
 ## Results
 
