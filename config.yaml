@@ -105,6 +105,72 @@ data:
       Plastic: plastic
       Textile Trash: other
       Vegetation: organic       # garden waste
+    # MIT; merges TrashNet, Household Waste (studio + real-world photos), Garbage
+    # Classification V2 and TriCascade. Its own six labels put styrofoam under paper and food
+    # under trash, so map its original fine labels instead.
+    TrashBusters/combined:
+      column: original_label
+      labels:
+        # household waste
+        aerosol_cans: null              # may be pressurised: not a plain can
+        aluminum_food_cans: metal
+        aluminum_soda_cans: metal
+        steel_food_cans: metal
+        cardboard_boxes: paper
+        cardboard_packaging: paper
+        magazines: paper
+        newspaper: paper
+        office_paper: paper
+        paper_cups: null                # plastic-lined paper
+        styrofoam_cups: null            # foam
+        styrofoam_food_containers: null
+        disposable_plastic_cutlery: plastic
+        plastic_cup_lids: plastic
+        plastic_detergent_bottles: plastic
+        plastic_food_containers: plastic
+        plastic_shopping_bags: plastic
+        plastic_soda_bottles: plastic
+        plastic_straws: plastic
+        plastic_trash_bags: plastic
+        plastic_water_bottles: plastic
+        glass_beverage_bottles: glass
+        glass_cosmetic_containers: glass
+        glass_food_jars: glass
+        eggshells: organic
+        food_waste: organic
+        tea_bags: null                  # many contain plastic
+        # Garbage Classification V2 and TrashNet
+        biological: organic
+        cardboard: paper
+        paper: paper
+        glass: glass
+        metal: metal
+        plastic: plastic
+        trash: null
+        # TriCascade
+        A_Foods: organic
+        B_Animal Dead Body: other       # never ORGANIC
+        C_Cardboard: paper
+        D_Newspaper: paper
+        E_Paper Cups: null
+        F_Papers: paper
+        G_Brown Glass: glass
+        I_Green Glass: glass
+        J_White Glass: glass
+        H_Porcelin: other               # ceramics: no compartment
+        K_Beverage Cans: metal
+        M_Metal Containers: metal
+        L_Construction Scrap: other
+        N_Plastic Bag: plastic
+        O_Plastic Bottle: plastic
+        Q_Plastic Containers: plastic
+        R_Plastic Cups: plastic
+        S_Tetra Pak: null               # paper, plastic and foil
+        V_Gloves: other
+        W_Masks: other
+        X_Bandai: other                 # bandages
+        Y_Medicine and Medicine Strip: null   # blister packs: plastic and foil
+        Z_A_Diaper: other
 
 # --- training ------------------------------------------------------------
 train:

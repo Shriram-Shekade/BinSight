@@ -46,7 +46,7 @@ class DataConfig:
     augment_views: int
     batch_size: int
     workers: int
-    sources: dict[str, dict[str, str | None]]
+    sources: dict[str, dict]  # {label: class}, or {column: name, labels: {label: class}}
 
 
 @dataclass

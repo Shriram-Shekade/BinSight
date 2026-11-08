@@ -90,13 +90,13 @@ HOW = f"""
 - A frozen open-source image model,
   [SigLIP2](https://huggingface.co/google/siglip2-so400m-patch16-256), turns the photo into
   1,152 numbers.
-- A small classifier trained on about 26,000 public waste photos reads those numbers and picks
+- A small classifier trained on about 28,000 public waste photos reads those numbers and picks
   plastic, paper, metal, organic, glass or other.
 - A second opinion (the image model matching the photo against text descriptions) has to agree
   when the item might be glass or food, or the classifier is under 95% sure.
 - Glass never goes in a bin: there is no glass compartment. ORGANIC needs 98% confidence.
 
-On 3,945 test photos it never saw in training, 0.43% of items went to a wrong compartment and
+On 5,984 test photos it never saw in training, 0.5% of items went to a wrong compartment and
 nothing wrong reached ORGANIC. Real photos are harder than dataset photos, so expect more
 UNSURE here. Details are in the [report]({REPO}/blob/main/reports/REPORT.md).
 

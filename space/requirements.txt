@@ -3,4 +3,4 @@
 torch==2.14.1
 torchvision==0.29.1
 transformers==5.21.0
-binsight @ git+https://github.com/Shriram-Shekade/BinSight@v2
+binsight @ git+https://github.com/Shriram-Shekade/BinSight@v3

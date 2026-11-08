@@ -9,11 +9,11 @@ sheet.
 
 > BinSight is a camera-based smart bin. You put an item on the tray; the camera takes a few
 > frames, and a free, open-source image model from Google turns them into a list of 1,152
-> numbers that describe what it sees. A small classifier we trained on about 26,000 public
+> numbers that describe what it sees. A small classifier we trained on about 28,000 public
 > waste photos reads those numbers and picks plastic, paper, metal, organic, glass or other.
 > Safety rules then decide whether it is sure enough to sort; anything doubtful goes to an
-> UNSURE compartment for a person, because one wrong item spoils a whole compartment. On 3,945
-> test photos it never trained on, 0.43% of items went into a wrong compartment, and nothing
+> UNSURE compartment for a person, because one wrong item spoils a whole compartment. On 5,984
+> test photos it never trained on, 0.5% of items went into a wrong compartment, and nothing
 > wrong reached ORGANIC.
 
 ## Map of the code
@@ -132,11 +132,11 @@ that says UNSURE:
 of a banana peel."* (the prompts are in `config.yaml`). Whichever class's descriptions match
 best wins. This was the whole of BinSight v1. It knows about things our datasets don't contain
 (hands, phones, faces), which is why it makes a good guard. It is less accurate on rubbish
-than our classifier (88.6% vs 99.1%), so it only gets a veto, not the deciding vote.
+than our classifier (87.8% vs 98.6%), so it only gets a veto, not the deciding vote.
 
 **Why is the threshold so low (0.30)?** `train.py` picks it automatically: the lowest threshold
 (so the most items get sorted) at which the wrong-sort rate on the validation photos stays
-under 1%. With rules 3 to 5 doing most of the safety work, 0.30 already meets that target (0.46%
+under 1%. With rules 3 to 5 doing most of the safety work, 0.30 already meets that target (0.52%
 on validation).
 
 **Rule 5 was a choice.** Checking only possible glass/organic sorted a few more items, but on
@@ -146,12 +146,14 @@ under 95% sure" kept wrong sorts low. The comparison is in
 
 ## 3. The training data (`data.py`)
 
-**Sources.** Four free datasets from Hugging Face (MIT, Apache-2.0 and CC BY 4.0 licences), all
+**Sources.** Five free datasets from Hugging Face (MIT, Apache-2.0 and CC BY 4.0 licences), all
 listed in `config.yaml` under `data.sources` with how their labels map to our six classes. For
 example *cardboard → paper*, *biological → organic*, *clothes → other*. Labels that are too
 mixed to put in one bin, like *trash* or *takeaway cups* (paper with a plastic lining), map to
 `null` and are left out, because a wrong label teaches wrong sorts. One source (RealWaste) is
 real rubbish photographed at a recycling facility, which is much harder than studio photos.
+Another (TrashBusters) adds household photos in real settings, much more food waste, and items
+with no bin such as porcelain, gloves and masks.
 
 `binsight prepare` runs three stages and caches each one in `data/`, so re-running only does
 new work:
@@ -161,22 +163,22 @@ new work:
    minutes on a laptop instead of hours on a GPU server.
 2. **Remove duplicates, then split.** The same photo often appears in more than one dataset
    (about half of TrashNet's photos are near-copies of photos in the biggest dataset, and some
-   appear twice within TrashNet: its 4,780 photos became 1,824). If a
+   appear twice within TrashNet: its 4,780 photos became 1,823). If a
    duplicate landed in both training and test, the test would be partly an open-book exam.
    Two photos count as duplicates if their embeddings are almost identical (cosine similarity
-   ≥ 0.985), or if they have the same tiny "fingerprint" hash and are similar. Of 29,815 usable
-   photos, 26,300 were kept; 15 photos whose copies had different labels were dropped. Then
+   ≥ 0.985), or if they have the same tiny "fingerprint" hash and are similar. Of 56,284 usable
+   photos, 39,881 were kept; 44 photos whose copies had different labels were dropped. Then
    each class is split 70% train, 15% validation, 15% test, always with the same random seed so
    the split is reproducible.
 3. **Augmented copies.** Each training photo gets 2 extra versions with a random crop, flip,
    small rotation and colour/brightness change, to mimic a cheap webcam over a tray. That turns
-   18,410 training photos into 55,230 training examples.
+   27,913 training photos into 83,739 training examples.
 
 | Split | plastic | paper | metal | organic | glass | other |
 | --- | --- | --- | --- | --- | --- | --- |
-| train | 2,593 | 3,806 | 1,671 | 1,272 | 2,896 | 6,172 |
-| validation | 556 | 816 | 358 | 272 | 620 | 1,323 |
-| test | 556 | 816 | 358 | 272 | 620 | 1,323 |
+| train | 4,698 | 6,278 | 3,484 | 2,598 | 3,646 | 7,209 |
+| validation | 1,007 | 1,346 | 747 | 557 | 782 | 1,545 |
+| test | 1,007 | 1,346 | 747 | 557 | 782 | 1,545 |
 
 **The three splits have different jobs.** *Training* photos teach the classifier. *Validation*
 photos are used to make choices (which settings, which threshold, the calibration). *Test*
@@ -193,7 +195,7 @@ comparison, SigLIP2's image part has about 428 million, which we don't change.
 little in the direction that makes it less wrong. This is gradient descent, using the AdamW
 optimiser. A few details that matter:
 
-- **Class balancing**: there are 6,172 "other" photos but only 1,272 "organic", so mistakes on
+- **Class balancing**: there are 7,209 "other" photos but only 2,598 "organic", so mistakes on
   rare classes are weighted more, or the model would learn to ignore them.
 - **Label smoothing (0.05)** and **dropout (0.2)**: two standard tricks that stop the model
   from memorising the training photos (overfitting) and becoming over-confident.
@@ -202,11 +204,11 @@ optimiser. A few details that matter:
 
 **Settings search.** It tries 8 combinations (with and without the hidden layer, two learning
 rates, two weight-decay strengths) and keeps the one with the best validation score: 512
-hidden units, learning rate 0.001, weight decay 0.0001, best at epoch 33, macro-F1 0.987.
+hidden units, learning rate 0.001, weight decay 0.0001, best at epoch 33, macro-F1 0.985.
 
 **Calibration** (`fit_temperature`). A classifier that says "90% sure" should be right about
 90% of the time. Ours was a bit under-confident (a side effect of label smoothing), so we divide its raw scores by a fitted "temperature"
-(0.537) before turning them into probabilities. Afterwards its confidence matches reality very
+(0.575) before turning them into probabilities. Afterwards its confidence matches reality very
 closely (expected calibration error 0.004 on test, where 0 is perfect). This matters because
 the safety rules trust those confidence numbers.
 
@@ -226,34 +228,38 @@ The result is saved as [`models/head.safetensors`](../models) (the weights, 2.4 
   the right compartment (the rest went to UNSURE or a wrong bin).
 - **Contamination per compartment**: of what ended up in, say, PLASTIC, how much doesn't belong.
 
-**Results on the 3,945 test photos** (from [`reports/REPORT.md`](../reports/REPORT.md)):
+**Results on the 5,984 test photos** (from [`reports/REPORT.md`](../reports/REPORT.md)):
 
 | | Zero-shot only (v1 idea) | BinSight v2 |
 | --- | --- | --- |
-| Accuracy (6 classes) | 88.6% | **99.1%** |
-| Wrong sorts | 2.9% | **0.43%** |
-| Sortable items sorted right | 75.2% | **93.7%** |
-| Wrong items in ORGANIC | 14.3% | **0%** |
-| Wrong items in PLASTIC | 11.3% | **2.1%** |
+| Accuracy (6 classes) | 87.8% | **98.6%** |
+| Wrong sorts | 2.8% | **0.5%** |
+| Sortable items sorted right | 79.8% | **91.4%** |
+| Wrong items in ORGANIC | 9.4% | **0%** |
+| Wrong items in PLASTIC | 7.2% | **1.0%** |
+| Wrong items in METAL | 5.8% | **2.2%** |
 
-**About 52% of test items go to UNSURE, and that is mostly correct**: 49% of the test photos
-are glass or "other", which *should* go to UNSURE. Of the 2,002 sortable items, 116 (5.8%) go
-to UNSURE and 10 (0.5%) to a wrong bin.
+**About 44% of test items go to UNSURE, and that is mostly correct**: 39% of the test photos
+are glass or "other", which *should* go to UNSURE. Of the 3,657 sortable items, 296 (8.1%) go
+to UNSURE and 18 (0.5%) to a wrong bin.
 
 **The tougher test** (`crosscheck.py`). The normal test photos come from the same datasets as
 the training photos (same cameras, same backgrounds), which flatters the score. So we also
-trained four extra times, each time leaving out one whole dataset, and tested on that dataset.
+trained five extra times, each time leaving out one whole dataset, and tested on that dataset.
 That is closer to "a new camera on a new campus":
 
 | Dataset left out | Trained accuracy | Trained wrong sorts | Zero-shot wrong sorts |
 | --- | --- | --- | --- |
-| omasteam (largest, web photos) | 95.8% | 0.7% | 2.3% |
-| TrashNet (studio photos) | 98.4% | 0.7% | 1.2% |
-| recycling-dataset (soft plastics) | 84.3% | 2.0% | 2.3% |
-| RealWaste (real rubbish) | 89.7% | 2.5% | 5.7% |
+| omasteam (largest, web photos) | 91.6% | 1.1% | 2.3% |
+| TrashNet (studio photos) | 98.2% | 0.7% | 1.2% |
+| recycling-dataset (soft plastics) | 83.6% | 1.3% | 2.3% |
+| RealWaste (real rubbish) | 91.3% | 1.8% | 5.7% |
+| TrashBusters (household photos) | 88.3% | 4.2% | 3.2% |
 
-On never-seen photos it makes fewer wrong sorts than zero-shot every time, but more than on the
-normal test set. Expect real webcam results to look more like this table than the one above.
+On never-seen photos it makes fewer wrong sorts than zero-shot on four of the five, and more
+than on the normal test set. The exception is TrashBusters: 392 of its 571 wrong sorts are
+"other" items such as porcelain, gloves and masks, which no other dataset shows, so a model
+trained without it has never seen them. The deployed model has. Expect real webcam results to look more like this table than the one above.
 
 **Being honest about one rule.** The 98% bar for ORGANIC was added after we saw two mistakes in
 the test set (glass ornaments shaped like beans, and a grass-covered sack, reaching ORGANIC).
@@ -274,33 +280,33 @@ because those need a live camera.
 We built the system and trained its decision-making part. The image model that turns photos
 into numbers is Google's open-source SigLIP2, used unchanged, as many real products build on
 existing models. On top of it we trained our own classifier (593,414 weights learned
-from 26,000 photos), designed the safety rules, built the data pipeline, the testing, and the
-live camera app. Our classifier is what takes accuracy from 88.6% to 99.1%.
+from about 28,000 photos), designed the safety rules, built the data pipeline, the testing, and the
+live camera app. Our classifier is what takes accuracy from 87.8% to 98.6%.
 
 **"Why not train the whole model yourself?"**
-Retraining 428 million weights on 26,000 photos would mostly memorise the photos (overfit),
+Retraining 428 million weights on 28,000 photos would mostly memorise the photos (overfit),
 needs a GPU server, and would break the zero-shot second opinion we use as a safety guard.
 Freezing it and training a small classifier on top is the standard approach for small datasets,
 and trains in minutes on a laptop.
 
 **"How accurate is it?"**
-99.1% on test photos, with 0.43% of items put in a wrong compartment. On whole datasets it
-never saw, wrong sorts are 0.7% to 2.5%. It has not been measured on a real webcam over a real
+98.6% on test photos, with 0.5% of items put in a wrong compartment. On whole datasets it
+never saw, wrong sorts are 0.7% to 4.2%. It has not been measured on a real webcam over a real
 tray yet; that is the next step.
 
 **"What happens when it's wrong?"**
-It is built to say UNSURE rather than guess: a person sorts those. Of the 17 wrong sorts in
-the test set, the most common (6) is glass going to PLASTIC; some dataset "glass" photos
-honestly look like plastic bottles.
+It is built to say UNSURE rather than guess: a person sorts those. Of the 29 wrong sorts in
+the test set, 16 went into METAL (5 plastic, 5 "other", 4 paper, 2 glass), so that is the
+weakest bin. None went into ORGANIC.
 
 **"Why doesn't it sort glass?"**
 Safety: broken glass in food waste can hurt animals, and glass in plastic recycling is a
-contaminant. It recognises glass (98.9% of test glass photos), but routes it to UNSURE. A glass
+contaminant. It recognises glass (98.5% of test glass photos), but routes it to UNSURE. A glass
 compartment would be a hardware change.
 
 **"Why does so much go to UNSURE?"**
-In the test set, half the items are glass or "other", which belong in UNSURE. Of the items that
-do have a bin, 93.7% are sorted automatically and correctly. In the live demo the 5-frame vote
+In the test set, about 4 in 10 items are glass or "other", which belong in UNSURE. Of the items
+that do have a bin, 91.4% are sorted automatically and correctly. In the live demo the 5-frame vote
 and the "turn it" second look exist to cut UNSURE further.
 
 **"Is it private?"**

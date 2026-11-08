@@ -10,7 +10,7 @@
   ],
   "dim": 1152,
   "hidden": 512,
-  "temperature": 0.5370317697525024,
+  "temperature": 0.5754399299621582,
   "threshold": 0.3,
   "guard": 0.5,
   "double_check": {
@@ -28,71 +28,71 @@
   "max_wrong_sort": 0.01,
   "val_operating_point": {
     "threshold": 0.3,
-    "coverage": 0.47072243346007603,
-    "wrong_sort_rate": 0.0045627376425855515,
-    "unsure_rate": 0.529277566539924,
-    "sortable_recall": 0.9185814185814186,
-    "precision_of_sorts": 0.9903069466882067
+    "coverage": 0.5645053475935828,
+    "wrong_sort_rate": 0.00518048128342246,
+    "unsure_rate": 0.4354946524064171,
+    "sortable_recall": 0.9152310637134263,
+    "precision_of_sorts": 0.9908229721728834
   },
-  "val_macro_f1": 0.986916389535118,
+  "val_macro_f1": 0.9849815737623381,
   "grid": [
     {
       "hidden": 0,
       "lr": 0.001,
       "weight_decay": 0.0001,
-      "val_macro_f1": 0.9773752092932758,
-      "best_epoch": 22
+      "val_macro_f1": 0.9788127761128331,
+      "best_epoch": 33
     },
     {
       "hidden": 0,
       "lr": 0.001,
       "weight_decay": 0.01,
-      "val_macro_f1": 0.9773174349717678,
-      "best_epoch": 24
+      "val_macro_f1": 0.9785958559586581,
+      "best_epoch": 33
     },
     {
       "hidden": 0,
       "lr": 0.0003,
       "weight_decay": 0.0001,
-      "val_macro_f1": 0.9677153990267561,
+      "val_macro_f1": 0.9700205420372353,
       "best_epoch": 34
     },
     {
       "hidden": 0,
       "lr": 0.0003,
       "weight_decay": 0.01,
-      "val_macro_f1": 0.9678669976104924,
-      "best_epoch": 38
+      "val_macro_f1": 0.9700205420372353,
+      "best_epoch": 35
     },
     {
       "hidden": 512,
       "lr": 0.001,
       "weight_decay": 0.0001,
-      "val_macro_f1": 0.986916389535118,
+      "val_macro_f1": 0.9849815737623381,
       "best_epoch": 33
     },
     {
       "hidden": 512,
       "lr": 0.001,
       "weight_decay": 0.01,
-      "val_macro_f1": 0.986916389535118,
-      "best_epoch": 33
+      "val_macro_f1": 0.9849815737623381,
+      "best_epoch": 37
     },
     {
       "hidden": 512,
       "lr": 0.0003,
       "weight_decay": 0.0001,
-      "val_macro_f1": 0.9833347437880026,
-      "best_epoch": 20
+      "val_macro_f1": 0.9828435221382051,
+      "best_epoch": 26
     },
     {
       "hidden": 512,
       "lr": 0.0003,
       "weight_decay": 0.01,
-      "val_macro_f1": 0.9833347437880026,
-      "best_epoch": 20
+      "val_macro_f1": 0.9828435221382051,
+      "best_epoch": 26
     }
   ],
-  "train_embeddings": 55230,
-  "trained_at": "2026-11-07T15:28:17"
+  "train_embeddings": 83739,
+  "trained_at": "2026-11-08T13:48:08"
 }

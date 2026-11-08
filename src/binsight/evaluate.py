@@ -181,7 +181,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         f"{_pct(zs_v1['wrong_sort_rate'])} wrong sorts "
         f"(CI {_ci(zs_v1['wrong_sort_ci'])}), {_pct(zs_v1['sortable_recall'])} of sortable items "
         "sorted right.",
-        f"- 5-class accuracy: trained **{_pct(head['accuracy'])}** "
+        f"- 6-class accuracy: trained **{_pct(head['accuracy'])}** "
         f"(CI {_ci(head['accuracy_ci'])}) vs zero-shot {_pct(zs_v1['accuracy'])} "
         f"(CI {_ci(zs_v1['accuracy_ci'])}).",
         "",
@@ -239,7 +239,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "",
         "![Confusion matrices](confusion.png)",
         "",
-        "## Per source dataset (5-class accuracy)",
+        "## Per source dataset (6-class accuracy)",
         "",
         "| Source | Test images | Zero-shot only | Trained |",
         "| --- | --- | --- | --- |",
@@ -293,13 +293,16 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
             "",
             "Glass or plastic in food waste can hurt animals that eat it, so ORGANIC is stricter "
             "than the other compartments: zero-shot must always agree, and the trained head needs "
-            f"{(meta.get('min_confidence') or {}).get('organic', 0):.2f} confidence. With only the "
-            "usual rules, 3 non-organic test items reached ORGANIC: green glass ornaments shaped "
-            "like beans (both models were fooled), a burlap sack covered in grass, and a plastic "
-            "item; validation had none, so it could not be used to choose the bar. The 0.98 bar "
-            "was therefore set as a safety policy after seeing those test items. It stops all "
-            "three, but because the test set informed it, the test result for ORGANIC leaks is "
-            "not an independent measurement. Cost: about 2-3% of organic items go to UNSURE.",
+            f"{(meta.get('min_confidence') or {}).get('organic', 0):.2f} confidence. When the bar "
+            "was set, 3 non-organic test items had reached ORGANIC with only the usual rules: "
+            "green glass ornaments shaped like beans (both models were fooled), a burlap sack "
+            "covered in grass, and a plastic item; validation had none, so it could not be used "
+            "to choose the bar. The 0.98 bar was therefore set as a safety policy after seeing "
+            "those test items. On the current test set, reshuffled when a fifth dataset was "
+            "added, it again stops 3 items (one glass, one plastic, one other). Some of the "
+            "photos it was chosen on may still be in the test set, so the result for ORGANIC "
+            "leaks is not an independent measurement. Cost: about 2% of organic items go to "
+            "UNSURE.",
         ]
     lines += [
         "",
@@ -319,6 +322,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "garythung/trashnet": "MIT",
         "viola77data/recycling-dataset": "Apache-2.0",
         "Tatyr2210/waste-classification-vit": "MIT upload of RealWaste (CC BY 4.0)",
+        "TrashBusters/combined": "MIT (merges four Kaggle datasets, incl. real-world photos)",
     }
     for source in cfg.data.sources:
         lines.append(
@@ -327,9 +331,10 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         )
     lines += [
         "",
-        "- Labels were mapped to the five classes in `config.yaml`; mixed labels (generic "
-        "'trash', takeaway cups, disposable plates, paper towels, polystyrene) were dropped "
-        "rather than guessed.",
+        "- Labels were mapped to the six classes in `config.yaml`; mixed labels (generic "
+        "'trash', takeaway and paper cups, disposable plates, paper towels, polystyrene, "
+        "Tetra Pak, medicine blister strips, tea bags, aerosol cans) were dropped rather than "
+        "guessed.",
         f"- Near-duplicates (cosine >= {cfg.data.dedupe_cosine} between embeddings, or identical "
         f"image hash) were merged before splitting, so no image leaks between train and test: "
         f"{stats['duplicate_links']} duplicate links in {stats['duplicate_groups']} groups; "
@@ -385,7 +390,8 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "different, so expect lower accuracy live; the threshold can be raised with `+`.",
         "- De-duplication removes copies, not different photos of the same object; such "
         "near-twins can still sit on both sides of the split and flatter these numbers.",
-        "- 'other' in the data is batteries, clothes, shoes and textiles only. Hands, faces, "
+        "- 'other' in the data is batteries, clothes, shoes, textiles, ceramics, gloves, masks, "
+        "bandages, nappies, construction scrap and dead animals. Hands, faces, "
         "phones and an empty tray rely on the zero-shot guard, which this test set does not "
         "measure.",
         "- Class mapping is a policy choice (e.g. cardboard is paper, soft plastics are plastic, "

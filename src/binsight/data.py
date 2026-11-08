@@ -109,14 +109,20 @@ def embed_rows(backbone: Backbone, ds, rows, cfg: Config, augment: bool, desc: s
 
 
 def _usable_rows(ds, source: str, cfg: Config) -> tuple[np.ndarray, np.ndarray]:
-    """Rows whose label maps to one of our classes, and that class index."""
-    mapping = cfg.data.sources[source]
-    names = ds.features["label"].names
-    unknown = set(names) - set(mapping)
+    """Rows whose label maps to one of our classes, and that class index.
+
+    A source maps its `label` column, or names another column: {column: ..., labels: {...}}.
+    """
+    spec = cfg.data.sources[source]
+    column, mapping = (spec["column"], spec["labels"]) if "labels" in spec else ("label", spec)
+    feature, values = ds.features[column], ds[column]
+    if hasattr(feature, "names"):  # class-label column: values are indices into names
+        values = [feature.names[v] for v in values]
+    unknown = set(values) - set(mapping)
     if unknown:
         raise ValueError(f"{source}: no mapping in config.yaml for labels {sorted(unknown)}")
-    to_class = [cfg.classes.index(mapping[n]) if mapping[n] else -1 for n in names]
-    y = np.array([to_class[label] for label in ds["label"]])
+    to_class = {n: cfg.classes.index(c) if c else -1 for n, c in mapping.items()}
+    y = np.array([to_class[v] for v in values])
     rows = np.flatnonzero(y >= 0)
     return rows, y[rows]
 

@@ -6,29 +6,40 @@ sorting, because one wrong item contaminates a whole compartment: a wrong auto-s
 than an UNSURE.
 
 v1 asked a pretrained model (SigLIP2) to match photos against text prompts. v2 trains its own
-classifier on ~26k public waste photos on top of that model, calibrates it, and picks the UNSURE
+classifier on ~28k public waste photos on top of that model, calibrates it, and picks the UNSURE
 threshold from data to keep wrong sorts under 1%. See **[reports/REPORT.md](reports/REPORT.md)**
 for the measured accuracy against v1, and **[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md)** for a
 plain-language tour of how the code works.
 
 ## Results
 
-On 3,945 held-out test photos (never used for training, tuning or picking the threshold):
+On 5,984 held-out test photos (never used for training, tuning or picking the threshold):
 
 | | Zero-shot only (v1 approach) | v2 deployed |
 | --- | --- | --- |
-| 6-class accuracy | 88.6% | **99.1%** |
-| Items put in the wrong compartment | 2.9% | **0.43%** |
-| Sortable items sorted into the right compartment | 75.2% | **93.7%** |
-| Wrong items in the ORGANIC bin | 14.3% | **0%** |
-| Wrong items in the PLASTIC bin | 11.3% | **2.1%** |
-| Wrong sorts on real rubbish it never trained on (RealWaste held out) | 5.7% | **2.5%** |
-| Wrong sorts on soft plastics it never trained on (recycling-dataset held out) | 2.3% | **2.0%** |
+| 6-class accuracy | 87.8% | **98.6%** |
+| Items put in the wrong compartment | 2.8% | **0.5%** |
+| Sortable items sorted into the right compartment | 79.8% | **91.4%** |
+| Wrong items in the ORGANIC bin | 9.4% | **0%** |
+| Wrong items in the PLASTIC bin | 7.2% | **1.0%** |
+| Wrong items in the METAL bin | 5.8% | **2.2%** |
+| Wrong sorts on real rubbish it never trained on (RealWaste held out) | 5.7% | **1.8%** |
+| Wrong sorts on soft plastics it never trained on (recycling-dataset held out) | 2.3% | **1.3%** |
+| Wrong sorts on household photos it never trained on (TrashBusters held out) | 3.2% | **4.2%** |
 | Time per decision (M5, fp16) | ~34 ms (1 frame) | ~135 ms (5-frame vote) |
 
 The zero-shot column uses v2's prompts, which give glass its own class; v1 itself (glass lumped
 into "other") made 5.7% wrong sorts on the previous version of this test set. The test set includes real rubbish
 photographed at a recycling facility (RealWaste), which is harder than studio photos.
+
+The TrashBusters row is the one place zero-shot does better: about two thirds of those wrong
+sorts are items such as porcelain, gloves and masks that no other dataset shows, so a model
+trained without TrashBusters has never seen them. The deployed model has.
+
+Adding TrashBusters as a fifth, harder dataset changed the test set. The previous model scored
+99.1% with 0.43% wrong sorts on a smaller one without those photos, so those numbers can't be
+compared directly. Held-out datasets can: at the same sorting rate, training with TrashBusters made
+fewer wrong sorts on three of the four original datasets and about the same on RealWaste.
 
 Glass has its own class (it still goes to UNSURE: there is no glass compartment), so the model
 learns the glass-vs-clear-plastic boundary instead of lumping glass in with clothes and shoes.
@@ -62,7 +73,7 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
 ```
 
 - **Backbone**: `google/siglip2-so400m-patch16-256`, frozen. Only the head's weights are
-  trained. With about 26k images, a frozen strong encoder generalises better than fine-tuning
+  trained. With about 28k training images, a frozen strong encoder generalises better than fine-tuning
   400M parameters, and it keeps the zero-shot prompts working as a guard for things the datasets
   have no pictures of (hands, faces, an empty tray).
 - **Second opinion**: zero-shot must pick the same class when the item might be glass or
@@ -71,7 +82,7 @@ webcam crop ──► SigLIP2 vision encoder (frozen, open source) ──► 115
   (`scripts/rule_ab.py`).
 - **Head**: linear or one-hidden-layer MLP, picked by a small grid on validation macro-F1;
   class-balanced loss; label smoothing; temperature-calibrated softmax.
-- **Data**: four openly licensed Hugging Face datasets (MIT / Apache-2.0 / CC BY 4.0), labels mapped to the
+- **Data**: five openly licensed Hugging Face datasets (MIT / Apache-2.0 / CC BY 4.0), labels mapped to the
   six classes in `config.yaml`, near-duplicates merged before splitting so nothing leaks from
   train to test, 70/15/15 stratified split, two augmented views per training image.
 
@@ -160,7 +171,7 @@ To put it online for free as a [Hugging Face Space](https://huggingface.co/space
 3. The first build takes about 10 minutes (it downloads the 4 GB SigLIP2 model). After that the
    Space link works for anyone, at roughly a second per photo.
 
-The Space installs this repository at tag `v2`, which includes the trained head. To deploy a
+The Space installs this repository at tag `v3`, which includes the trained head. To deploy a
 newer version, move the tag or change `space/requirements.txt`. Free Spaces sleep after two days
 without visits; the next visit wakes them in a few minutes, so open the link before showing it.
 
@@ -191,5 +202,6 @@ It builds on others' work, each under its own license:
 | [garythung/trashnet](https://huggingface.co/datasets/garythung/trashnet) | training and test images | MIT |
 | [viola77data/recycling-dataset](https://huggingface.co/datasets/viola77data/recycling-dataset) | training and test images | Apache-2.0 |
 | [Tatyr2210/waste-classification-vit](https://huggingface.co/datasets/Tatyr2210/waste-classification-vit), which appears to be [RealWaste](https://archive.ics.uci.edu/dataset/908/realwaste) (Single, Iranmanesh & Raad, 2023) | training and test images (real rubbish at a recycling facility) | MIT (upload); RealWaste is CC BY 4.0 |
+| [TrashBusters/combined](https://huggingface.co/datasets/TrashBusters/combined) | training and test images (includes real-world household photos) | MIT |
 
 The datasets are downloaded by `binsight prepare` and are not included in this repository.

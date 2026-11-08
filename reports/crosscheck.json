@@ -1,58 +1,58 @@
 {
   "omasteam/waste-garbage-management-dataset": {
-    "test_images": 18403,
+    "test_images": 18402,
     "classes_missing_from_training": [],
     "classes_present": {
       "plastic": 1899,
       "paper": 3305,
       "metal": 1009,
       "organic": 992,
-      "glass": 2975,
+      "glass": 2974,
       "other": 8223
     },
-    "threshold": 0.65,
+    "threshold": 0.3,
     "trained": {
-      "accuracy": 0.9583220127153181,
-      "coverage": 0.3017986197902516,
-      "wrong_sort_rate": 0.00728142150736293,
-      "unsure_rate": 0.6982013802097484,
-      "sortable_recall": 0.7522553782095767,
-      "precision_of_sorts": 0.9758732445084624
+      "accuracy": 0.9159873926747093,
+      "coverage": 0.34191935659167483,
+      "wrong_sort_rate": 0.010977067710031518,
+      "unsure_rate": 0.6580806434083252,
+      "sortable_recall": 0.8452463566967384,
+      "precision_of_sorts": 0.9678957406230133
     },
     "zero_shot": {
-      "accuracy": 0.8962125740368418,
-      "coverage": 0.31739390316796173,
-      "wrong_sort_rate": 0.023148399717437373,
-      "unsure_rate": 0.6826060968320382,
+      "accuracy": 0.8962069340289099,
+      "coverage": 0.31741115096185196,
+      "wrong_sort_rate": 0.023149657645908053,
+      "unsure_rate": 0.682588849038148,
       "sortable_recall": 0.7515614156835531,
       "precision_of_sorts": 0.9270672829994864
     }
   },
   "garythung/trashnet": {
-    "test_images": 1824,
+    "test_images": 1823,
     "classes_missing_from_training": [],
     "classes_present": {
       "plastic": 361,
       "paper": 675,
       "metal": 329,
       "organic": 0,
-      "glass": 459,
+      "glass": 458,
       "other": 0
     },
     "threshold": 0.3,
     "trained": {
-      "accuracy": 0.9841008771929824,
-      "coverage": 0.7258771929824561,
-      "wrong_sort_rate": 0.006578947368421052,
-      "unsure_rate": 0.2741228070175439,
-      "sortable_recall": 0.9611721611721612,
-      "precision_of_sorts": 0.9909365558912386
+      "accuracy": 0.9824465167306637,
+      "coverage": 0.7257268239166209,
+      "wrong_sort_rate": 0.007131102578167855,
+      "unsure_rate": 0.27427317608337903,
+      "sortable_recall": 0.9597069597069597,
+      "precision_of_sorts": 0.9901738473167044
     },
     "zero_shot": {
-      "accuracy": 0.9583333333333334,
-      "coverage": 0.6935307017543859,
-      "wrong_sort_rate": 0.01206140350877193,
-      "unsure_rate": 0.30646929824561403,
+      "accuracy": 0.9583104772353264,
+      "coverage": 0.693911135490949,
+      "wrong_sort_rate": 0.012068019747668678,
+      "unsure_rate": 0.30608886450905104,
       "sortable_recall": 0.9106227106227106,
       "precision_of_sorts": 0.9826086956521739
     }
@@ -70,12 +70,12 @@
     },
     "threshold": 0.3,
     "trained": {
-      "accuracy": 0.8430735930735931,
-      "coverage": 0.5335497835497836,
-      "wrong_sort_rate": 0.02002164502164502,
-      "unsure_rate": 0.46645021645021645,
-      "sortable_recall": 0.7396726422447389,
-      "precision_of_sorts": 0.962474645030426
+      "accuracy": 0.836038961038961,
+      "coverage": 0.520021645021645,
+      "wrong_sort_rate": 0.012987012987012988,
+      "unsure_rate": 0.479978354978355,
+      "sortable_recall": 0.730319563522993,
+      "precision_of_sorts": 0.9750260145681582
     },
     "zero_shot": {
       "accuracy": 0.8760822510822511,
@@ -99,12 +99,12 @@
     },
     "threshold": 0.3,
     "trained": {
-      "accuracy": 0.8968047337278107,
-      "coverage": 0.6594082840236687,
-      "wrong_sort_rate": 0.02485207100591716,
-      "unsure_rate": 0.34059171597633137,
-      "sortable_recall": 0.7675350701402806,
-      "precision_of_sorts": 0.9623115577889447
+      "accuracy": 0.9128994082840237,
+      "coverage": 0.6359763313609468,
+      "wrong_sort_rate": 0.018461538461538463,
+      "unsure_rate": 0.3640236686390533,
+      "sortable_recall": 0.7469224162610936,
+      "precision_of_sorts": 0.9709713435057685
     },
     "zero_shot": {
       "accuracy": 0.8165680473372781,
@@ -113,6 +113,35 @@
       "unsure_rate": 0.3377514792899408,
       "sortable_recall": 0.7317492127111366,
       "precision_of_sorts": 0.9135096497498213
+    }
+  },
+  "TrashBusters/combined": {
+    "test_images": 13583,
+    "classes_missing_from_training": [],
+    "classes_present": {
+      "plastic": 3007,
+      "paper": 3532,
+      "metal": 2591,
+      "organic": 1896,
+      "glass": 1076,
+      "other": 1481
+    },
+    "threshold": 0.3,
+    "trained": {
+      "accuracy": 0.882868291246411,
+      "coverage": 0.7291467275270559,
+      "wrong_sort_rate": 0.04203784141942134,
+      "unsure_rate": 0.2708532724729441,
+      "sortable_recall": 0.8464538363867223,
+      "precision_of_sorts": 0.9423465266558966
+    },
+    "zero_shot": {
+      "accuracy": 0.8578370021350217,
+      "coverage": 0.7125082824118383,
+      "wrong_sort_rate": 0.03217256865199146,
+      "unsure_rate": 0.28749171758816167,
+      "sortable_recall": 0.8381099220025394,
+      "precision_of_sorts": 0.9548460425707791
     }
   }
 }
