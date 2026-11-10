@@ -27,5 +27,5 @@ go and why.
 
 Code, training and the accuracy report: https://github.com/Shriram-Shekade/BinSight
 
-This Space installs the `binsight` package from GitHub (tag `v2`), which includes the trained
+This Space installs the `binsight` package from GitHub (tag `v3`), which includes the trained
 classifier. Example photos are from [TrashNet](https://github.com/garythung/trashnet) (MIT).

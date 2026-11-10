@@ -1,6 +1,6 @@
 [project]
 name = "binsight"
-version = "0.2.0"
+version = "0.3.0"
 description = "Smart waste-sorting bin demo: zero-shot camera classification with SigLIP2 / CLIP"
 readme = "README.md"
 license = "MIT"

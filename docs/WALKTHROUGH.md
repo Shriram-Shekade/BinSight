@@ -230,7 +230,7 @@ The result is saved as [`models/head.safetensors`](../models) (the weights, 2.4 
 
 **Results on the 5,984 test photos** (from [`reports/REPORT.md`](../reports/REPORT.md)):
 
-| | Zero-shot only (v1 idea) | BinSight v2 |
+| | Zero-shot only (v1 idea) | BinSight v3 |
 | --- | --- | --- |
 | Accuracy (6 classes) | 87.8% | **98.6%** |
 | Wrong sorts | 2.8% | **0.5%** |

@@ -1,10 +1,10 @@
-# BinSight accuracy report
+# BinSight v3 accuracy report
 
 Backbone `google/siglip2-so400m-patch16-256` (frozen) + trained head (MLP, 512 hidden), trained 2026-11-08T13:48:08. Test set: 5984 held-out images never used for training, model selection, calibration or threshold choice.
 
 ## Summary
 
-- **Deployed system** (trained head + zero-shot guard + second opinion, threshold 0.30): puts **0.5%** of items in the wrong compartment (95% CI 0.3–0.7%) and sorts **91.4%** of the items that belong in a compartment into the right one; everything else goes to UNSURE.
+- **v3 deployed system** (trained head + zero-shot guard + second opinion, threshold 0.30): puts **0.5%** of items in the wrong compartment (95% CI 0.3–0.7%) and sorts **91.4%** of the items that belong in a compartment into the right one; everything else goes to UNSURE.
 - **Zero-shot only** (the v1 approach, with v2's prompts) at 0.60: 2.8% wrong sorts (CI 2.4–3.3%), 79.8% of sortable items sorted right.
 - 6-class accuracy: trained **98.6%** (CI 98.3–98.9%) vs zero-shot 87.8% (CI 87.0–88.7%).
 

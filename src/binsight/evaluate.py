@@ -23,6 +23,9 @@ from .metrics import (
 )
 from .model import ZERO_SHOT_THRESHOLD, Backbone, Policy, load_head
 
+# Model release shown on the report and graphs (git tag of the committed head).
+RELEASE = "v3"
+
 # Reference data-viz palette (light surface).
 SURFACE, INK, INK_2, GRID = "#fcfcfb", "#0b0b0b", "#52514e", "#e4e3df"
 SERIES = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"]  # categorical slots 1-4, fixed order
@@ -134,7 +137,12 @@ def _plot_tradeoff(
     ax.text(target * 100, 3, f" target {target:.0%}", color=INK_2, fontsize=8)
     ax.set_xlabel("wrong sorts (% of all items)", color=INK_2)
     ax.set_ylabel("sorted into the right compartment\n(% of items that belong in one)", color=INK_2)
-    ax.set_title("Test set: sorting more vs sorting wrong", color=INK, fontsize=11, loc="left")
+    ax.set_title(
+        f"BinSight {RELEASE} on the test set: sorting more vs sorting wrong",
+        color=INK,
+        fontsize=11,
+        loc="left",
+    )
     ax.set_ylim(0, 100)
     ax.set_xlim(0, max(10.0, target * 1000))  # the region a bin can live with
     ax.grid(color=GRID, lw=0.8)
@@ -164,7 +172,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
     other = sum(deployed["per_class"]["support"][classes.index(c)] for c in cfg.unsure_classes)
     sortable_share = 1 - other / n_test
     lines = [
-        "# BinSight accuracy report",
+        f"# BinSight {RELEASE} accuracy report",
         "",
         f"Backbone `{meta['backbone']}` (frozen) + trained head ({head_kind}), "
         f"trained {meta['trained_at']}. Test set: {n_test} held-out images never used for "
@@ -172,8 +180,9 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         "",
         "## Summary",
         "",
-        f"- **Deployed system** (trained head + zero-shot guard + second opinion, threshold "
-        f"{deployed['threshold']:.2f}): puts **{_pct(deployed['wrong_sort_rate'])}** of items in "
+        f"- **{RELEASE} deployed system** (trained head + zero-shot guard + second opinion, "
+        f"threshold {deployed['threshold']:.2f}): puts "
+        f"**{_pct(deployed['wrong_sort_rate'])}** of items in "
         f"the wrong compartment (95% CI {_ci(deployed['wrong_sort_ci'])}) and sorts "
         f"**{_pct(deployed['sortable_recall'])}** of the items that belong in a compartment into "
         "the right one; everything else goes to UNSURE.",
@@ -465,12 +474,13 @@ def evaluate(cfg: Config, out: Path, log=print) -> Path:
             }
 
     out.mkdir(parents=True, exist_ok=True)
-    _plot_confusions([systems[0], systems[2]], classes, out / "confusion.png")
+    trained = {**systems[2], "name": f"{RELEASE} trained head"}
+    _plot_confusions([systems[0], trained], classes, out / "confusion.png")
     curves = [
         ("zero-shot", sweep(t_zs, None, t_y, plain), systems[1]),
         ("trained", sweep(t_probs, None, t_y, plain), systems[2]),
         ("trained + guard", sweep(t_probs, t_zs, t_y, guarded), systems[3]),
-        ("deployed", sweep(t_probs, t_zs, t_y, deployed), systems[4]),
+        (f"{RELEASE} deployed", sweep(t_probs, t_zs, t_y, deployed), systems[4]),
     ]
     _plot_tradeoff(curves, systems[0], meta["max_wrong_sort"], out / "tradeoff.png")
     (out / "metrics.json").write_text(

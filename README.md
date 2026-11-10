@@ -1,13 +1,14 @@
-# BinSight v2
+# BinSight v3
 
 A campus smart bin. An item goes on a tray, a camera classifies it, and the tray drops it into
 PLASTIC, PAPER, METAL or ORGANIC. Anything uncertain or out of scope goes to UNSURE for manual
 sorting, because one wrong item contaminates a whole compartment: a wrong auto-sort is much worse
 than an UNSURE.
 
-v1 asked a pretrained model (SigLIP2) to match photos against text prompts. v2 trains its own
-classifier on ~28k public waste photos on top of that model, calibrates it, and picks the UNSURE
-threshold from data to keep wrong sorts under 1%. See **[reports/REPORT.md](reports/REPORT.md)**
+v1 asked a pretrained model (SigLIP2) to match photos against text prompts. Since v2, BinSight
+trains its own classifier on top of that model; v3, the current version, uses ~28k public waste
+photos from five datasets. The classifier is calibrated, and the UNSURE threshold is picked
+from data to keep wrong sorts under 1%. See **[reports/REPORT.md](reports/REPORT.md)**
 for the measured accuracy against v1, and **[docs/WALKTHROUGH.md](docs/WALKTHROUGH.md)** for a
 plain-language tour of how the code works.
 
@@ -15,7 +16,7 @@ plain-language tour of how the code works.
 
 On 5,984 held-out test photos (never used for training, tuning or picking the threshold):
 
-| | Zero-shot only (v1 approach) | v2 deployed |
+| | Zero-shot only (v1 approach) | v3 deployed |
 | --- | --- | --- |
 | 6-class accuracy | 87.8% | **98.6%** |
 | Items put in the wrong compartment | 2.8% | **0.5%** |
@@ -28,7 +29,7 @@ On 5,984 held-out test photos (never used for training, tuning or picking the th
 | Wrong sorts on household photos it never trained on (TrashBusters held out) | 3.2% | **4.2%** |
 | Time per decision (M5, fp16) | ~34 ms (1 frame) | ~135 ms (5-frame vote) |
 
-The zero-shot column uses v2's prompts, which give glass its own class; v1 itself (glass lumped
+The zero-shot column uses the current prompts, which give glass its own class; v1 itself (glass lumped
 into "other") made 5.7% wrong sorts on the previous version of this test set. The test set includes real rubbish
 photographed at a recycling facility (RealWaste), which is harder than studio photos.
 
@@ -48,6 +49,19 @@ or the model is under 95% sure. ORGANIC is the strictest bin: the second opinion
 and the model needs 98% confidence, because glass or plastic in food waste can hurt animals.
 
 ![Sorting more vs sorting wrong](reports/tradeoff.png)
+
+### Versions
+
+| Version | What it is | Test photos | Wrong sorts | Sortable sorted right |
+| --- | --- | --- | --- | --- |
+| [`v1`](https://github.com/Shriram-Shekade/BinSight/tree/v1) | zero-shot prompts only, no training | 3,945 (v2's set) | 5.7% | n/a |
+| [`v2`](https://github.com/Shriram-Shekade/BinSight/tree/v2) | trained head, four datasets | 3,945 | 0.43% | 93.7% |
+| [`v3`](https://github.com/Shriram-Shekade/BinSight/tree/v3) (current) | trained head, five datasets (adds TrashBusters) | 5,984 | **0.5%** | **91.4%** |
+
+v2 and v3 were scored on different test sets, so those two rows can't be compared directly.
+The fair comparison is on whole datasets each model never trained on: with RealWaste held out,
+wrong sorts went from 2.5% (v2) to **1.8%** (v3); with the recycling-dataset held out, from 2.0%
+to **1.3%**.
 
 These are web photos, so expect lower numbers from a real webcam; the full write-up and its
 limitations are in [reports/REPORT.md](reports/REPORT.md).
