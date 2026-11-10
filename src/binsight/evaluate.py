@@ -186,7 +186,7 @@ def _report(cfg: Config, stats: dict, meta: dict, systems: list[dict], per_sourc
         f"the wrong compartment (95% CI {_ci(deployed['wrong_sort_ci'])}) and sorts "
         f"**{_pct(deployed['sortable_recall'])}** of the items that belong in a compartment into "
         "the right one; everything else goes to UNSURE.",
-        "- **Zero-shot only** (the v1 approach, with v2's prompts) at 0.60: "
+        "- **Zero-shot only** (the v1 approach, with the current prompts) at 0.60: "
         f"{_pct(zs_v1['wrong_sort_rate'])} wrong sorts "
         f"(CI {_ci(zs_v1['wrong_sort_ci'])}), {_pct(zs_v1['sortable_recall'])} of sortable items "
         "sorted right.",

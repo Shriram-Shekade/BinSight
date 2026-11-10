@@ -5,7 +5,7 @@ Backbone `google/siglip2-so400m-patch16-256` (frozen) + trained head (MLP, 512 h
 ## Summary
 
 - **v3 deployed system** (trained head + zero-shot guard + second opinion, threshold 0.30): puts **0.5%** of items in the wrong compartment (95% CI 0.3–0.7%) and sorts **91.4%** of the items that belong in a compartment into the right one; everything else goes to UNSURE.
-- **Zero-shot only** (the v1 approach, with v2's prompts) at 0.60: 2.8% wrong sorts (CI 2.4–3.3%), 79.8% of sortable items sorted right.
+- **Zero-shot only** (the v1 approach, with the current prompts) at 0.60: 2.8% wrong sorts (CI 2.4–3.3%), 79.8% of sortable items sorted right.
 - 6-class accuracy: trained **98.6%** (CI 98.3–98.9%) vs zero-shot 87.8% (CI 87.0–88.7%).
 
 Wrong sorts are what matter for a bin: one wrong item contaminates a compartment, while an UNSURE only costs a manual sort. The threshold was chosen on the validation split as the lowest one keeping wrong sorts at or below 1.0%.
